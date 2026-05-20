@@ -1538,13 +1538,34 @@ class AssessmentView {
         return `<li class="uc-source-line">${renderSourceTypeBadge(s.type)} ${refText}</li>`;
       }).join('');
 
+      // v04.2.2: Academic-lab entries get extra source affordances. The
+      // literature flow's top_research_groups[] doesn't carry per-group
+      // publication links (just name + count), so synthesis can't attach a
+      // specific paper to each lab. As a workaround:
+      //   1. Linkify the group name to a Google Scholar search — pure
+      //      frontend, no AI changes, gets the advisor to representative
+      //      papers in one click.
+      //   2. Add a "View representative publications" pointer that switches
+      //      the Competitive section to the Sources tab where the literature
+      //      flow's key_publications[] are already listed + linked.
+      // discontinued_trial entries don't need this — their NCT IDs are
+      // already linked via sources[].ref.
+      const isAcademicOnly = uc.category === 'academic_only'
+        || (uniqTypes.length === 1 && uniqTypes[0] === 'academic_lab');
+      const nameDisplay = isAcademicOnly
+        ? `<a href="https://scholar.google.com/scholar?q=${encodeURIComponent(uc.name || '')}" target="_blank" rel="noopener" title="Search Google Scholar for publications by this group">${this.escape(uc.name || 'Unknown')}</a>`
+        : this.escape(uc.name || 'Unknown');
+      const academicPubsPointer = isAcademicOnly
+        ? `<p class="uc-academic-pubs-pointer"><a href="#" data-uc-go-to-sources="1">View representative publications &rarr;</a></p>`
+        : '';
+
       return `
         <div class="unified-competitor-card ${categoryClass}${isDiscontinued ? ' uc-discontinued' : ''}"
              data-relevance="${uc.relevance_rationale ? this.escape(uc.relevance_rationale) : ''}"
              data-threat="${uc.threat_rationale ? this.escape(uc.threat_rationale) : ''}"
              data-winnability="${uc.winnability_rationale ? this.escape(uc.winnability_rationale) : ''}">
           <div class="uc-header">
-            <strong class="uc-name">${this.escape(uc.name || 'Unknown')}</strong>
+            <strong class="uc-name">${nameDisplay}</strong>
             <div class="uc-source-badges">
               ${uniqTypes.map(renderSourceTypeBadge).join('')}
               ${isMulti ? `<span class="uc-source-badge uc-source-multi" title="Surfaced in multiple sources — stronger signal">${uniqTypes.length}×</span>` : ''}
@@ -1564,6 +1585,7 @@ class AssessmentView {
             </div>
           ` : ''}
           ${sourceLines ? `<ul class="uc-sources-list">${sourceLines}</ul>` : ''}
+          ${academicPubsPointer}
         </div>
       `;
     };
@@ -1824,30 +1846,44 @@ class AssessmentView {
     if (!container || container._rerankerWired) return;
     container._rerankerWired = true;
     container.addEventListener('click', (e) => {
+      // Reranker badge → toggle the rationale panel below the card.
       const badge = e.target.closest('[data-uc-rationale]');
-      if (!badge) return;
-      const card = badge.closest('.unified-competitor-card');
-      if (!card) return;
-      const panel = card.querySelector('.uc-rationale-panel');
-      if (!panel) return;
-      const which = badge.getAttribute('data-uc-rationale');
-      const labels = { relevance: 'Relevance', threat: 'Threat', winnability: 'Winnability' };
-      const text = card.getAttribute(`data-${which}`) || '';
-      if (!text) {
-        panel.hidden = true;
-        panel.innerHTML = '';
+      if (badge) {
+        const card = badge.closest('.unified-competitor-card');
+        if (!card) return;
+        const panel = card.querySelector('.uc-rationale-panel');
+        if (!panel) return;
+        const which = badge.getAttribute('data-uc-rationale');
+        const labels = { relevance: 'Relevance', threat: 'Threat', winnability: 'Winnability' };
+        const text = card.getAttribute(`data-${which}`) || '';
+        if (!text) {
+          panel.hidden = true;
+          panel.innerHTML = '';
+          return;
+        }
+        if (!panel.hidden && panel.dataset.which === which) {
+          panel.hidden = true;
+          panel.innerHTML = '';
+          panel.dataset.which = '';
+          return;
+        }
+        panel.dataset.which = which;
+        panel.innerHTML = `<strong>${labels[which] || which} rationale:</strong> ${text}`;
+        panel.hidden = false;
         return;
       }
-      // Toggle: clicking the same badge again hides the panel.
-      if (!panel.hidden && panel.dataset.which === which) {
-        panel.hidden = true;
-        panel.innerHTML = '';
-        panel.dataset.which = '';
+      // Academic-lab "View representative publications" pointer — switch
+      // the Competitive section's view-toggle to Sources where the
+      // literature key_publications[] are listed.
+      const goSources = e.target.closest('[data-uc-go-to-sources]');
+      if (goSources) {
+        e.preventDefault();
+        const panel = container.closest('.tab-panel');
+        if (!panel) return;
+        const sourcesBtn = panel.querySelector('.view-toggle-btn[data-view="sources"]');
+        if (sourcesBtn) sourcesBtn.click();
         return;
       }
-      panel.dataset.which = which;
-      panel.innerHTML = `<strong>${labels[which] || which} rationale:</strong> ${text}`;
-      panel.hidden = false;
     });
   }
 
