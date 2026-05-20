@@ -169,7 +169,7 @@ The frontend talks to the proxy through three hard-coded URLs in `js/core/auth.j
 
 ## Status
 
-PoC, in active internal use as of May 2026. Daily token cap defaults to ~3 ventures/day on the runner with the v04.1 Scientific Evidence phase enabled (was ~7 before). Spread across a week, a 20-venture cohort processes comfortably.
+PoC, in active internal use as of May 2026. Daily token cap defaults to ~6 ventures/day on the runner with all v04.2 phases enabled (Scientific Evidence + Unified Synthesis). Earlier estimates of ~3/day were too conservative — the actual measured per-venture cost is ~2M tokens, not the originally-projected ~4M. A 20-venture cohort processes comfortably across 3-4 days.
 
 ---
 

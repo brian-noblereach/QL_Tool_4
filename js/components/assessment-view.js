@@ -1538,25 +1538,23 @@ class AssessmentView {
         return `<li class="uc-source-line">${renderSourceTypeBadge(s.type)} ${refText}</li>`;
       }).join('');
 
-      // v04.2.2: Academic-lab entries get extra source affordances. The
-      // literature flow's top_research_groups[] doesn't carry per-group
-      // publication links (just name + count), so synthesis can't attach a
-      // specific paper to each lab. As a workaround:
-      //   1. Linkify the group name to a Google Scholar search — pure
-      //      frontend, no AI changes, gets the advisor to representative
-      //      papers in one click.
-      //   2. Add a "View representative publications" pointer that switches
-      //      the Competitive section to the Sources tab where the literature
-      //      flow's key_publications[] are already listed + linked.
+      // v04.2.2: Academic-lab entries get extra source affordances when the
+      // synthesis output doesn't provide real publication refs. As of v04.2.3
+      // the lit-review flow attributes representative publications to each
+      // top_research_group, and synthesis carries those forward as
+      // sources[].ref URLs — making the Google Scholar fallback redundant for
+      // groups where attribution succeeded. We only apply the fallbacks when
+      // the synthesis output has no http(s) refs for this academic-lab card.
       // discontinued_trial entries don't need this — their NCT IDs are
       // already linked via sources[].ref.
       const isAcademicOnly = uc.category === 'academic_only'
         || (uniqTypes.length === 1 && uniqTypes[0] === 'academic_lab');
-      const nameDisplay = isAcademicOnly
-        ? `<a href="https://scholar.google.com/scholar?q=${encodeURIComponent(uc.name || '')}" target="_blank" rel="noopener" title="Search Google Scholar for publications by this group">${this.escape(uc.name || 'Unknown')}</a>`
+      const hasRealSourceRefs = sources.some(s => s && typeof s.ref === 'string' && /^https?:\/\//.test(s.ref));
+      const nameDisplay = (isAcademicOnly && !hasRealSourceRefs)
+        ? `<a href="https://scholar.google.com/scholar?q=${encodeURIComponent(uc.name || '')}" target="_blank" rel="noopener" title="Search Google Scholar for publications by this group (no per-group attribution available)">${this.escape(uc.name || 'Unknown')}</a>`
         : this.escape(uc.name || 'Unknown');
-      const academicPubsPointer = isAcademicOnly
-        ? `<p class="uc-academic-pubs-pointer"><a href="#" data-uc-go-to-sources="1">View representative publications &rarr;</a></p>`
+      const academicPubsPointer = (isAcademicOnly && !hasRealSourceRefs)
+        ? `<p class="uc-academic-pubs-pointer"><a href="#" data-uc-go-to-sources="1">View landscape publications &rarr;</a></p>`
         : '';
 
       return `
