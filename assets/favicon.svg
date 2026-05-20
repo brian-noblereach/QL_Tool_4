@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- NobleReach 'O' icon - two arcs per brand guide -->
+  <defs>
+    <linearGradient id="topGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#0082A5"/>
+      <stop offset="100%" stop-color="#00C8EB"/>
+    </linearGradient>
+    <linearGradient id="bottomGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#6D68E7"/>
+      <stop offset="100%" stop-color="#6A93FF"/>
+    </linearGradient>
+  </defs>
+  <!-- Top arc: Teal to Light Blue gradient -->
+  <path d="M16 4 A12 12 0 0 1 28 16" stroke="url(#topGrad)" stroke-width="4" fill="none" stroke-linecap="round"/>
+  <!-- Bottom arc: Purple gradient -->
+  <path d="M16 28 A12 12 0 0 1 4 16" stroke="url(#bottomGrad)" stroke-width="4" fill="none" stroke-linecap="round"/>
+</svg>

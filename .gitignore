@@ -1,0 +1,20 @@
+# Runner secrets — copy config.example.json to config.json on the VM and fill in
+runner-vm/config.json
+
+# Runner runtime state
+runner-vm/logs/
+runner-vm/runner.lock
+
+# Partial Stack AI evidence (regenerated per row; not source code)
+queue-evidence/partial/
+
+# Local-only diagnostic/repro artifacts
+runner-vm/logs/reproduce-*.txt
+
+# OS / IDE noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.tmp
+*.bak
