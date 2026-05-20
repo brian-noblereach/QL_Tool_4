@@ -1,20 +1,15 @@
-# Runner secrets — copy config.example.json to config.json on the VM and fill in
-runner-vm/config.json
+# Strict allowlist: ignore everything by default, then re-allow only the
+# frontend paths that belong in the public repo. New folders/files added at
+# the repo root will be ignored automatically until explicitly allowed here.
 
-# Runner runtime state
-runner-vm/logs/
-runner-vm/runner.lock
+/*
 
-# Partial Stack AI evidence (regenerated per row; not source code)
-queue-evidence/partial/
+# Allowed top-level files
+!/.gitignore
+!/index.html
+!/README.md
 
-# Local-only diagnostic/repro artifacts
-runner-vm/logs/reproduce-*.txt
-
-# OS / IDE noise
-.DS_Store
-Thumbs.db
-.vscode/
-.idea/
-*.tmp
-*.bak
+# Allowed top-level folders (recurse into them)
+!/assets/
+!/css/
+!/js/
