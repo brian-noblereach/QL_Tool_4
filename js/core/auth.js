@@ -48,10 +48,22 @@ const Auth = {
     }
   },
 
+  // 25 s is comfortably longer than a typical GAS cold start (~3-8 s) but short
+  // enough that the user gets a real error instead of an indefinite "Verifying..."
+  // when the proxy stalls.
+  AUTH_FETCH_TIMEOUT_MS: 25000,
+
+  _fetchWithTimeout(url, ms) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    return fetch(url, { signal: controller.signal })
+      .finally(() => clearTimeout(timer));
+  },
+
   async login(password) {
     try {
       const url = `${this.proxyUrl}?action=auth&password=${encodeURIComponent(password)}`;
-      const r = await fetch(url);
+      const r = await this._fetchWithTimeout(url, this.AUTH_FETCH_TIMEOUT_MS);
       const data = await r.json();
       if (data.success && data.token) {
         localStorage.setItem(this.STORAGE_TOKEN, data.token);
@@ -63,13 +75,16 @@ const Auth = {
       }
       return { success: false, error: data.error || 'Invalid password' };
     } catch (e) {
+      if (e && e.name === 'AbortError') {
+        return { success: false, error: 'Connection timed out. Try again.' };
+      }
       return { success: false, error: 'Unable to connect. Try again.' };
     }
   },
 
   async _verify(token) {
     const url = `${this.proxyUrl}?action=verify&token=${encodeURIComponent(token)}`;
-    const r = await fetch(url);
+    const r = await this._fetchWithTimeout(url, this.AUTH_FETCH_TIMEOUT_MS);
     return await r.json();
   },
 

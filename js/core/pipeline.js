@@ -27,7 +27,7 @@ class AnalysisPipeline {
       {
         name: 'Sector Funding Activity',
         key: 'funding',
-        duration: 115,  // observed range 92-135s
+        duration: 400,  // v02 7-node flow: ~400s observed (was 115s in v01 4-node flow)
         status: 'pending',
         startTime: null,
         endTime: null,

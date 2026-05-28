@@ -2585,6 +2585,80 @@ body {
 .funding-amount { font-weight: 600; color: var(--nr-teal-1); font-size: 13px; }
 .more-link, .more-note { font-size: 12px; color: var(--nr-teal-1); margin-top: 8px; }
 
+/* ---------- Sector Funding badges (v04.3) ---------- */
+.relevance-badge,
+.classification-badge,
+.pipeline-status-badge,
+.evidence-type-badge {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+}
+
+/* Sector relevance — used on VC deals, grants, pipeline rows */
+.relevance-core      { background: #d1fae5; color: #065f46; }
+.relevance-adjacent  { background: #dbeafe; color: #1e40af; }
+.relevance-broad     { background: var(--slate-100); color: var(--slate-600); }
+
+/* Grant classification: translational / applied / basic */
+.classification-translational { background: #d1fae5; color: #065f46; }
+.classification-applied       { background: #e0e7ff; color: #3730a3; }
+.classification-basic         { background: var(--slate-100); color: var(--slate-600); }
+
+/* Pipeline opportunity status */
+.status-open               { background: #d1fae5; color: #065f46; }
+.status-recently_announced { background: #dbeafe; color: #1e40af; }
+.status-standing_interest  { background: var(--slate-100); color: var(--slate-600); }
+
+/* Key-evidence type badge in score justification */
+.evidence-vc_deal              { background: #ede9fe; color: #5b21b6; }
+.evidence-grant_award          { background: #d1fae5; color: #065f46; }
+.evidence-pipeline_opportunity { background: #dbeafe; color: #1e40af; }
+.evidence-scaled_outcome       { background: #fef3c7; color: #92400e; }
+.evidence-market_report        { background: var(--slate-100); color: var(--slate-600); }
+
+/* AI rationale scoring-calc inline line */
+.ai-scoring-calc {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--slate-50);
+  border-left: 3px solid var(--nr-teal-1);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--slate-700);
+}
+.ai-scoring-arithmetic {
+  display: inline-block;
+  margin-top: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--slate-600);
+}
+
+/* Grant ID tag (small monospace under the grant title) */
+.grant-id-cell { display: inline-block; }
+.grant-id-tag {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: var(--slate-500);
+}
+
+/* Key evidence item in detailed view */
+.key-evidence-item { margin-bottom: 10px; }
+.key-evidence-header { margin-bottom: 4px; }
+.score-implication { font-size: 12px; color: var(--slate-600); }
+
+/* Summary statistics table in detailed view */
+.summary-stats-table td { font-size: 12px; }
+
+/* Sources view muted hint */
+.evidence-content p.muted { font-size: 12px; color: var(--slate-500); font-style: italic; }
+
+
 /* VC Activity Summary */
 .vc-activity-summary { 
   display: grid; 

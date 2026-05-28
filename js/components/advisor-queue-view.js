@@ -23,9 +23,91 @@ const AdvisorQueueView = {
     await this._loadConfig();
     this._render();
     this._wireEvents();
+    // v04.2.4: wire the pencil-edit button on the assessment-view venture-name
+    // header. The HTML scaffold existed in index.html but was never wired —
+    // clicking it did nothing. Wire once on init since the elements are static.
+    this._wireRenameVenturePencil();
     if (this.state.advisorName) {
       await this.refresh();
     }
+  },
+
+  // Pencil-edit button for the venture name shown at the top of the assessment
+  // view. The button toggles a hidden input + Save/Cancel pair. Save:
+  //   1. Update the displayed name (#venture-name-text)
+  //   2. Update state-manager.state.ventureName so SmartsheetIntegration picks
+  //      it up on score submit (writes to the v03 scoresheet's ventureName col).
+  //   3. Update the v04 queue row's VentureName column when there's an
+  //      activeRowId (load-from-runner or live-run flows). Best-effort; a
+  //      failure here doesn't block the local rename.
+  _wireRenameVenturePencil() {
+    if (this._renameWired) return;
+    this._renameWired = true;
+    const btn      = document.getElementById('edit-venture-name-btn');
+    const display  = document.querySelector('.venture-name-display');
+    const editBox  = document.getElementById('venture-name-edit');
+    const nameH1   = document.getElementById('venture-name-text');
+    const input    = document.getElementById('venture-name-input');
+    const saveBtn  = document.getElementById('save-venture-name-btn');
+    const cancel   = document.getElementById('cancel-venture-name-btn');
+    if (!btn || !display || !editBox || !nameH1 || !input || !saveBtn || !cancel) {
+      Debug.warn('[v04] rename-venture wiring skipped — missing elements');
+      return;
+    }
+    const open = () => {
+      input.value = (nameH1.textContent || '').trim();
+      editBox.classList.remove('hidden');
+      display.classList.add('v04-hidden');
+      input.focus();
+      input.select();
+    };
+    const close = () => {
+      editBox.classList.add('hidden');
+      display.classList.remove('v04-hidden');
+    };
+    const save = async () => {
+      const newName = (input.value || '').trim();
+      if (!newName) {
+        window.app?.toastManager?.error?.('Venture name cannot be empty.');
+        return;
+      }
+      // 1. UI update
+      nameH1.textContent = newName;
+      // 2. State-manager update (for score-submit pickup)
+      const sm = window.app?.stateManager;
+      if (sm) {
+        sm.state = sm.state || {};
+        sm.state.ventureName = newName;
+        try { sm.saveState?.(); } catch (e) { Debug.warn('[v04] saveState after rename failed:', e); }
+      }
+      // 3. Persist to the v04 queue row (best-effort; rename still applies
+      //    locally even if Smartsheet update fails).
+      const rowId = this.state.activeRowId;
+      if (rowId && window.QueueClient) {
+        try {
+          const r = await QueueClient.update(rowId, { VentureName: newName });
+          if (!r?.success) {
+            Debug.warn('[v04] queue VentureName update returned non-success:', r?.error);
+            window.app?.toastManager?.warning?.('Name updated locally; queue update failed (will retry on next submit).');
+          } else {
+            window.app?.toastManager?.success?.('Venture name updated.');
+          }
+        } catch (e) {
+          Debug.warn('[v04] queue VentureName update threw:', e);
+          window.app?.toastManager?.warning?.('Name updated locally; queue update failed.');
+        }
+      } else {
+        window.app?.toastManager?.success?.('Venture name updated.');
+      }
+      close();
+    };
+    btn.addEventListener('click', open);
+    cancel.addEventListener('click', close);
+    saveBtn.addEventListener('click', save);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+      else if (e.key === 'Escape') { e.preventDefault(); close(); }
+    });
   },
 
   _renderLoadingSkeleton() {
@@ -708,6 +790,14 @@ const AdvisorQueueView = {
     this._stopAutoRefresh();
     const row = this.state.rows.find(r => String(r.id) === String(rowId));
     if (!row) { alert('Row not found'); return; }
+    // Reset the rename pencil UI to display-mode in case it was left open on
+    // a previous venture (the venture-name-header is reused across opens).
+    try {
+      const editBox = document.getElementById('venture-name-edit');
+      const display = document.querySelector('.venture-name-display');
+      if (editBox) editBox.classList.add('hidden');
+      if (display) display.classList.remove('v04-hidden');
+    } catch (_) { /* non-fatal */ }
 
     // Show a full-screen overlay while we fetch the evidence JSON and shape it
     // for display. queue_get_evidence does 3 HTTP hops (list → meta → download),

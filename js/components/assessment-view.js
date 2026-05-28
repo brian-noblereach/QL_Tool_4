@@ -191,15 +191,15 @@ class AssessmentView {
         9: { label: 'Category Leader', description: 'Field-leading credibility with exceptional translation track record and leadership. High confidence in sustained engagement and ability to drive commercialization.' }
       },
       funding: {
-        1: { label: 'No Investor Signal', description: 'No comparable funding activity in the sector. Minimal investor interest or deal activity.' },
-        2: { label: 'Very Limited', description: 'Very limited funding activity, mostly grants. Few institutional investors active in the space.' },
-        3: { label: 'Early/Angel-Led', description: 'Some angel/seed activity, limited institutional participation. Funding ecosystem still nascent.' },
-        4: { label: 'Growing Early-Stage', description: 'Growing investor interest; early-stage rounds becoming more common. A few notable deals.' },
-        5: { label: 'Established VC Activity', description: 'Regular Series A/B activity with established VC interest. Healthy, repeatable deal flow.' },
-        6: { label: 'Strong Institutional Backing', description: 'Strong institutional backing with multiple growth rounds. Sector attracting significant capital.' },
-        7: { label: 'Scaled Winners', description: 'High-profile investors and strong deal flow. Multiple companies reaching large scale (often $1B+ valuation).' },
-        8: { label: 'Top-Tier Frenzy', description: 'Exceptional funding environment with multiple scaled winners. Top-tier VCs actively competing for deals.' },
-        9: { label: 'Peak Capital Cycle', description: 'Peak funding activity with repeated mega-rounds. Sector is a top investment category.' }
+        1: { label: 'No Sector Activity', description: 'No comparable VC deals, federal grants, or active opportunities in the sector.' },
+        2: { label: 'Very Limited Activity', description: 'Sparse signals across channels: maybe a handful of small grants or one-off deals; no sustained VC or agency interest.' },
+        3: { label: 'Emerging Activity', description: 'Early-stage signals: a few translational or applied grants and the occasional seed deal. Ecosystem still nascent.' },
+        4: { label: 'Growing Activity', description: 'Notable mix of grants and early-stage VC deals, with a few open BAAs or SBIR topics targeting the sector.' },
+        5: { label: 'Established Activity', description: 'Regular Series A/B deals plus steady translational/applied grant flow. Multiple federal opportunities currently open.' },
+        6: { label: 'Strong Multi-Channel Activity', description: 'Significant capital across VC and federal grants, with active pipeline opportunities from multiple agencies. Sector clearly on the funding map.' },
+        7: { label: 'Scaled Winners Present', description: 'Heavy activity across all three channels, and at least one sector company has reached a $1B+ valuation or major exit.' },
+        8: { label: 'Top-Tier Frenzy', description: 'Top-tier VCs (a16z, Sequoia, Founders Fund, etc.) actively competing in the sector, with multiple companies at scale.' },
+        9: { label: 'Peak Capital Cycle', description: 'Repeated mega-rounds ($500M+); sector is a dominant investment category and federal pipeline is robust.' }
       },
       competitive: {
         1: { label: 'Dominated Market', description: 'Market dominated by incumbents with entrenched advantages. Very difficult to differentiate or compete.' },
@@ -913,7 +913,7 @@ class AssessmentView {
   }
 
   /**
-   * Render a relevance badge for sector funding deals
+   * Render a relevance badge for sector funding deals/grants/opportunities
    */
   renderRelevanceBadge(relevance) {
     const level = (relevance || 'broad').toLowerCase();
@@ -921,45 +921,107 @@ class AssessmentView {
     return `<span class="relevance-badge relevance-${level}">${labels[level] || this.escape(relevance)}</span>`;
   }
 
+  /**
+   * Render a translational/applied/basic classification badge for federal grants
+   */
+  renderClassificationBadge(classification) {
+    const level = (classification || 'applied').toLowerCase();
+    const labels = { translational: 'Translational', applied: 'Applied', basic: 'Basic' };
+    return `<span class="classification-badge classification-${level}">${labels[level] || this.escape(classification)}</span>`;
+  }
+
+  /**
+   * Render a pipeline-opportunity status badge (open / recently_announced / standing_interest)
+   */
+  renderPipelineStatusBadge(status) {
+    const level = (status || 'standing_interest').toLowerCase();
+    const labels = {
+      open: 'Open',
+      recently_announced: 'Recently Announced',
+      standing_interest: 'Standing Interest'
+    };
+    return `<span class="pipeline-status-badge status-${level}">${labels[level] || this.escape(status)}</span>`;
+  }
+
+  /**
+   * Render an evidence-type badge for key_evidence items in the score justification
+   */
+  renderEvidenceTypeBadge(evidenceType) {
+    const t = (evidenceType || 'vc_deal').toLowerCase();
+    const labels = {
+      vc_deal: 'VC Deal',
+      grant_award: 'Grant Award',
+      pipeline_opportunity: 'Pipeline',
+      scaled_outcome: 'Scaled Outcome',
+      market_report: 'Market Report'
+    };
+    return `<span class="evidence-type-badge evidence-${t}">${labels[t] || this.escape(evidenceType)}</span>`;
+  }
+
+  /**
+   * Format a grant funding_usd integer for display
+   */
+  formatGrantAmount(fundingUsd) {
+    if (typeof fundingUsd !== 'number' || !Number.isFinite(fundingUsd) || fundingUsd <= 0) {
+      return 'Undisclosed';
+    }
+    return this.formatCurrencyWithCommas(fundingUsd, true);
+  }
+
   displayFundingEvidence(data) {
     const container = document.getElementById('funding-evidence');
     if (!container) return;
 
-    // v3 formatted data from funding.js formatForDisplay()
+    // v02 formatted data from funding.js formatForDisplay()
     const formatted = data?.formatted || {};
 
     // Sector activity metrics
     const activityLevel = formatted.activityLevel || 'none_found';
-    const fundingTrend = formatted.fundingTrend || 'unknown';
-    const totalDeals = formatted.totalVerifiedDeals || 0;
+    const vcFundingTrend = formatted.vcFundingTrend || 'unknown';
+    const grantFundingTrend = formatted.grantFundingTrend || 'unknown';
     const dataReliability = formatted.dataReliability || 'unverified';
-    const weightedDeals = formatted.weightedDealCount || 0;
     const narrativeSummary = formatted.narrativeSummary || formatted.summary || '';
-    const stageMaturity = formatted.stageMaturity || 'unknown';
+    const highestVcStage = formatted.highestVcStage || 'unknown';
     const investorTypes = formatted.investorTypes || [];
+    const primaryGrantFunders = formatted.primaryGrantFunders || [];
+    const primaryPipelineAgencies = formatted.primaryPipelineAgencies || [];
     const scaledWinners = formatted.scaledWinners;
     const primarySector = formatted.primarySector || '';
     const broaderSector = formatted.broaderSector || '';
 
-    // Verified deals and supporting evidence
-    const verifiedDeals = formatted.verifiedDeals || [];
-    const marketReports = formatted.marketReports || [];
-    const governmentPrograms = formatted.governmentPrograms || [];
+    // WSA + band + modifiers (folded inline into rationale, not a separate card)
+    const wsa = formatted.weightedSectorActivity || 0;
+    const wsaRounded = Number.isFinite(wsa) ? Math.round(wsa * 10) / 10 : 0;
+    const wsaArithmetic = formatted.wsaArithmetic || '';
+    const bandAssignment = formatted.bandAssignment || '';
+    const modifiersApplied = formatted.modifiersApplied || [];
+
+    // Three funding channels (sector-only; venture-own is partitioned separately)
+    const sectorVcDeals = formatted.sectorVcDeals || [];
+    const ventureOwnVcDeals = formatted.ventureOwnVcDeals || [];
+    const sectorGrants = formatted.sectorGrants || [];
+    const ventureOwnGrants = formatted.ventureOwnGrants || [];
+    const pipelineOpportunities = formatted.pipelineOpportunities || [];
+    const ventureOwnFundingContext = formatted.ventureOwnFundingContext || '';
+
     const humanReviewFlags = formatted.humanReviewFlags || [];
     const dataGaps = formatted.dataGaps || '';
 
-    // Score justification sub-assessments
-    const dealVolumeAssessment = formatted.dealVolumeAssessment || '';
-    const stageDistribution = formatted.stageDistribution || '';
-    const investorQuality = formatted.investorQuality || '';
+    // Score justification (v02: three channel assessments + outcomes + trend)
+    const vcAssessment = formatted.vcAssessment || '';
+    const grantsAssessment = formatted.grantsAssessment || '';
+    const pipelineAssessment = formatted.pipelineAssessment || '';
     const scaledOutcomes = formatted.scaledOutcomes || '';
     const trendAssessment = formatted.trendAssessment || '';
-    const sectorEvidence = formatted.sectorEvidence || [];
+    const evidenceSummary = formatted.summary || '';
+    const keyEvidence = formatted.keyEvidence || [];
+    const summaryStatistics = formatted.summaryStatistics || {};
 
-    // Venture's own funding context (from company data, NOT rating criteria)
+    // Legacy company-data fallback for ventures where the upstream
+    // venture_own_funding_context narrative is empty
     const companyFunding = this.data.company?.funding_and_investors || {};
     const ventureFundingRounds = companyFunding.funding_rounds || [];
-    const ventureGrants = companyFunding.government_grants || [];
+    const ventureLegacyGrants = companyFunding.government_grants || [];
     const ventureTotalFunding = companyFunding.total_funding || 'Unknown';
     const ventureNotableInvestors = companyFunding.notable_investors || [];
 
@@ -976,7 +1038,50 @@ class AssessmentView {
       return labels[level] || this.capitalize(String(level).replace(/_/g, ' '));
     };
 
-    // SUMMARY VIEW - includes sector deals, market reports, and government programs
+    const formatTrend = (t) => this.capitalize(String(t || 'unknown').replace(/_/g, ' '));
+
+    // Compose the inline WSA scoring-calc line for the AI Rationale block.
+    // Plain language, not arithmetic the advisor has to verify — but visible
+    // enough that they can sanity-check the AI's reasoning.
+    const wsaCalcLine = (wsaArithmetic || bandAssignment || modifiersApplied.length > 0)
+      ? `<p class="ai-scoring-calc"><strong>Scoring calculation:</strong> WSA = ${this.escape(String(wsaRounded))}${bandAssignment ? ` (${this.escape(bandAssignment)})` : ''}${modifiersApplied.length > 0 ? `; modifiers: ${modifiersApplied.map(m => this.escape(m)).join(', ')}` : ''}${wsaArithmetic ? `<br><span class="ai-scoring-arithmetic">${this.escape(wsaArithmetic)}</span>` : ''}</p>`
+      : '';
+
+    // Render helpers for the three channel tables
+    const renderVcDealsRows = (deals) => deals.map(d => `
+      <tr>
+        <td><strong>${this.escape(d.company || '')}</strong></td>
+        <td>${this.formatDate(d.dateApprox)}</td>
+        <td>${this.escape(d.stage || 'N/A')}</td>
+        <td>${this.formatDealAmount(d.amount)}</td>
+        <td>${this.renderRelevanceBadge(d.relevance)}</td>
+        <td class="investors-cell">${this.escape(this.truncate(d.investors || '', 60))}</td>
+      </tr>
+    `).join('');
+
+    const renderGrantsRows = (grantList) => grantList.map(g => `
+      <tr>
+        <td>${g.grantId ? `<span class="grant-id-cell"><strong>${this.escape(g.title || 'Grant')}</strong><br><span class="grant-id-tag">${this.escape(g.grantId)}</span></span>` : `<strong>${this.escape(g.title || 'Grant')}</strong>`}</td>
+        <td>${this.escape(g.funderAcronym || g.funder || '')}</td>
+        <td>${g.startYear || '-'}</td>
+        <td>${this.formatGrantAmount(g.fundingUsd)}</td>
+        <td>${this.renderClassificationBadge(g.classification)}</td>
+        <td>${this.renderRelevanceBadge(g.relevance)}</td>
+      </tr>
+    `).join('');
+
+    const renderPipelineRows = (opps) => opps.map(p => `
+      <tr>
+        <td>${p.sourceUrl ? `<a href="${this.escape(this.cleanSourceUrl(p.sourceUrl))}" target="_blank" rel="noopener"><strong>${this.escape(p.programName || 'Program')}</strong></a>` : `<strong>${this.escape(p.programName || 'Program')}</strong>`}</td>
+        <td>${this.escape(p.agency || '')}</td>
+        <td>${this.escape(p.type || '')}</td>
+        <td>${this.renderPipelineStatusBadge(p.status)}</td>
+        <td>${this.escape(p.responseDeadline || '-')}</td>
+        <td>${this.renderRelevanceBadge(p.relevance)}</td>
+      </tr>
+    `).join('');
+
+    // SUMMARY VIEW - three channels + venture-own panel
     const summaryHTML = `
       <div class="evidence-content">
         ${primarySector ? `<p class="industry-context"><strong>Sector Assessed:</strong> ${this.escape(primarySector)}${broaderSector ? ` (${this.escape(broaderSector)})` : ''}</p>` : ''}
@@ -987,22 +1092,27 @@ class AssessmentView {
             <span class="metric-value">${formatActivityLevel(activityLevel)}</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">Funding Trend</span>
-            <span class="metric-value">${this.capitalize(String(fundingTrend).replace(/_/g, ' '))}</span>
+            <span class="metric-label">VC Trend</span>
+            <span class="metric-value">${formatTrend(vcFundingTrend)}</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">Verified Deals</span>
-            <span class="metric-value">${totalDeals}</span>
+            <span class="metric-label">Grant Trend</span>
+            <span class="metric-value">${formatTrend(grantFundingTrend)}</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">Distinct Sources</span>
-            <span class="metric-value">${formatted.distinctSources || '-'}</span>
+            <span class="metric-label">WSA</span>
+            <span class="metric-value">${wsaRounded}</span>
+          </div>
+          <div class="metric-card">
+            <span class="metric-label">Data Reliability</span>
+            <span class="metric-value">${this.capitalize(String(dataReliability).replace(/_/g, ' '))}</span>
           </div>
         </div>
 
         <div class="evidence-section">
           <h4>AI Assessment Rationale</h4>
           <div class="ai-rationale">${this.formatRationale(narrativeSummary)}</div>
+          ${wsaCalcLine}
         </div>
 
         ${humanReviewFlags.length > 0 ? `
@@ -1012,155 +1122,222 @@ class AssessmentView {
           </div>
         ` : ''}
 
-        ${verifiedDeals.length > 0 ? `
+        ${sectorVcDeals.length > 0 ? `
           <div class="evidence-section">
-            <h4>Verified Sector Deals (${verifiedDeals.length})</h4>
+            <h4>Sector VC Deals (${sectorVcDeals.length})</h4>
             <table class="data-table">
               <thead>
                 <tr>
                   <th>Company</th>
                   <th>Date</th>
-                  <th>Series</th>
+                  <th>Stage</th>
                   <th>Amount</th>
                   <th>Relevance</th>
                   <th>Investors</th>
                 </tr>
               </thead>
               <tbody>
-                ${verifiedDeals.slice(0, 5).map(d => `
-                  <tr>
-                    <td><strong>${this.escape(d.company || '')}</strong></td>
-                    <td>${this.formatDate(d.date)}</td>
-                    <td>${this.escape(d.series || 'N/A')}</td>
-                    <td>${this.formatDealAmount(d.amount)}</td>
-                    <td>${this.renderRelevanceBadge(d.relevance)}</td>
-                    <td class="investors-cell">${this.escape(this.truncate(d.investors || '', 60))}</td>
-                  </tr>
-                `).join('')}
+                ${renderVcDealsRows(sectorVcDeals.slice(0, 5))}
               </tbody>
             </table>
-            ${verifiedDeals.length > 5 ? `<p class="more-link">+ ${verifiedDeals.length - 5} more deals in detailed view</p>` : ''}
+            ${sectorVcDeals.length > 5 ? `<p class="more-link">+ ${sectorVcDeals.length - 5} more deals in detailed view</p>` : ''}
           </div>
         ` : ''}
 
-        ${marketReports.length > 0 ? `
+        ${sectorGrants.length > 0 ? `
           <div class="evidence-section">
-            <details class="collapsible-section">
-              <summary><h4 style="display:inline;">Market Reports (${marketReports.length})</h4></summary>
-              <div class="market-reports-list">
-                ${marketReports.map(r => `
-                  <div class="market-report-item">
-                    <strong>${r.sourceUrl ? `<a href="${this.escape(this.cleanSourceUrl(r.sourceUrl))}" target="_blank" rel="noopener">${this.escape(r.title || 'Report')}</a>` : this.escape(r.title || 'Report')}</strong>
-                    ${r.keyFinding ? `<p>${this.escape(r.keyFinding)}</p>` : ''}
-                  </div>
-                `).join('')}
-              </div>
-            </details>
+            <h4>Federal Grants (${sectorGrants.length})</h4>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th>Funder</th>
+                  <th>Year</th>
+                  <th>Amount</th>
+                  <th>Classification</th>
+                  <th>Relevance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${renderGrantsRows(sectorGrants.slice(0, 5))}
+              </tbody>
+            </table>
+            ${sectorGrants.length > 5 ? `<p class="more-link">+ ${sectorGrants.length - 5} more grants in detailed view</p>` : ''}
           </div>
         ` : ''}
 
-        ${governmentPrograms.length > 0 ? `
+        ${pipelineOpportunities.length > 0 ? `
           <div class="evidence-section">
-            <details class="collapsible-section">
-              <summary><h4 style="display:inline;">Government Programs (${governmentPrograms.length})</h4></summary>
-              <div class="govt-programs-list">
-                ${governmentPrograms.map(g => `
-                  <div class="govt-program-item">
-                    <strong>${g.sourceUrl ? `<a href="${this.escape(this.cleanSourceUrl(g.sourceUrl))}" target="_blank" rel="noopener">${this.escape(g.name || 'Program')}</a>` : this.escape(g.name || 'Program')}</strong>
-                    ${g.amount && g.amount !== 'undisclosed' ? ` ${this.formatDealAmount(g.amount)}` : ''}
-                    ${g.description ? `<p>${this.escape(g.description)}</p>` : ''}
-                  </div>
-                `).join('')}
-              </div>
-            </details>
+            <h4>Active Pipeline Opportunities (${pipelineOpportunities.length})</h4>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Program</th>
+                  <th>Agency</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Deadline</th>
+                  <th>Relevance</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${renderPipelineRows(pipelineOpportunities.slice(0, 5))}
+              </tbody>
+            </table>
+            ${pipelineOpportunities.length > 5 ? `<p class="more-link">+ ${pipelineOpportunities.length - 5} more opportunities in detailed view</p>` : ''}
           </div>
         ` : ''}
 
-        ${(ventureFundingRounds.length > 0 || ventureGrants.length > 0 || ventureTotalFunding !== 'Unknown') ? `
+        ${(ventureOwnFundingContext || ventureOwnVcDeals.length > 0 || ventureOwnGrants.length > 0 || ventureFundingRounds.length > 0 || ventureLegacyGrants.length > 0 || ventureTotalFunding !== 'Unknown') ? `
           <div class="evidence-section venture-context-section">
             <details class="collapsible-section">
-              <summary><h4 style="display:inline;">Venture Funding Context (Reference Only)</h4></summary>
+              <summary><h4 style="display:inline;">Venture's Own Funding (Reference Only)</h4></summary>
               <div class="context-notice">
-                <strong>For reference only</strong> -- rate based on sector activity above, not the venture's own funding.
+                <strong>For reference only</strong> -- rate based on the sector activity above, not the venture's own funding history.
               </div>
-              ${ventureTotalFunding && ventureTotalFunding !== 'Unknown' ? `<p><strong>Total Funding:</strong> ${this.escape(ventureTotalFunding)}</p>` : ''}
-              ${ventureFundingRounds.length > 0 ? `
-                <div class="funding-timeline">
-                  ${ventureFundingRounds.slice(0, 3).map(r => `
-                    <div class="funding-event">
-                      <span class="funding-date">${this.formatDate(r.date)}</span>
-                      <span class="funding-type">${this.escape(r.round_type || '')}</span>
-                      <span class="funding-amount">${this.formatDealAmount(r.amount)}</span>
-                      ${(r.lead_investors || []).length > 0 ? `<span class="funding-investors">${r.lead_investors.slice(0, 2).map(i => this.escape(i)).join(', ')}</span>` : ''}
-                    </div>
-                  `).join('')}
-                  ${ventureFundingRounds.length > 3 ? `<p class="more-link">+ ${ventureFundingRounds.length - 3} more rounds in detailed view</p>` : ''}
-                </div>
-              ` : '<p class="no-data-message">No prior funding rounds identified for this venture.</p>'}
-              ${ventureGrants.length > 0 ? `
-                <h5>Government Grants</h5>
+              ${ventureOwnFundingContext ? `<p>${this.escape(ventureOwnFundingContext)}</p>` : ''}
+              ${ventureOwnVcDeals.length > 0 ? `
+                <h5>Venture VC Deals</h5>
                 <table class="data-table">
-                  <thead><tr><th>Type</th><th>Amount</th><th>Agency</th><th>Year</th></tr></thead>
-                  <tbody>
-                    ${ventureGrants.map(g => `<tr><td>${this.escape(g.grant_type || '')}</td><td>${this.formatDealAmount(g.amount)}</td><td>${this.escape(g.agency || '')}</td><td>${this.escape(g.year || '')}</td></tr>`).join('')}
-                  </tbody>
+                  <thead>
+                    <tr><th>Company</th><th>Date</th><th>Stage</th><th>Amount</th><th>Relevance</th><th>Investors</th></tr>
+                  </thead>
+                  <tbody>${renderVcDealsRows(ventureOwnVcDeals)}</tbody>
                 </table>
               ` : ''}
-              ${ventureNotableInvestors.length > 0 ? `<p><strong>Notable Investors:</strong> ${ventureNotableInvestors.map(i => this.escape(i)).join(', ')}</p>` : ''}
+              ${ventureOwnGrants.length > 0 ? `
+                <h5>Venture Federal Grants</h5>
+                <table class="data-table">
+                  <thead><tr><th>Title</th><th>Funder</th><th>Year</th><th>Amount</th><th>Classification</th><th>Relevance</th></tr></thead>
+                  <tbody>${renderGrantsRows(ventureOwnGrants)}</tbody>
+                </table>
+              ` : ''}
+              ${(!ventureOwnFundingContext && ventureOwnVcDeals.length === 0 && ventureOwnGrants.length === 0) ? `
+                <div class="venture-legacy-fallback">
+                  <p class="no-data-message">No venture-own funding identified in the sector scan; showing the company-extracted history below as reference.</p>
+                  ${ventureTotalFunding && ventureTotalFunding !== 'Unknown' ? `<p><strong>Total Funding:</strong> ${this.escape(ventureTotalFunding)}</p>` : ''}
+                  ${ventureFundingRounds.length > 0 ? `
+                    <div class="funding-timeline">
+                      ${ventureFundingRounds.slice(0, 3).map(r => `
+                        <div class="funding-event">
+                          <span class="funding-date">${this.formatDate(r.date)}</span>
+                          <span class="funding-type">${this.escape(r.round_type || '')}</span>
+                          <span class="funding-amount">${this.formatDealAmount(r.amount)}</span>
+                          ${(r.lead_investors || []).length > 0 ? `<span class="funding-investors">${r.lead_investors.slice(0, 2).map(i => this.escape(i)).join(', ')}</span>` : ''}
+                        </div>
+                      `).join('')}
+                      ${ventureFundingRounds.length > 3 ? `<p class="more-link">+ ${ventureFundingRounds.length - 3} more rounds</p>` : ''}
+                    </div>
+                  ` : ''}
+                  ${ventureLegacyGrants.length > 0 ? `
+                    <h5>Government Grants (from venture extraction)</h5>
+                    <table class="data-table">
+                      <thead><tr><th>Type</th><th>Amount</th><th>Agency</th><th>Year</th></tr></thead>
+                      <tbody>
+                        ${ventureLegacyGrants.map(g => `<tr><td>${this.escape(g.grant_type || '')}</td><td>${this.formatDealAmount(g.amount)}</td><td>${this.escape(g.agency || '')}</td><td>${this.escape(g.year || '')}</td></tr>`).join('')}
+                      </tbody>
+                    </table>
+                  ` : ''}
+                  ${ventureNotableInvestors.length > 0 ? `<p><strong>Notable Investors:</strong> ${ventureNotableInvestors.map(i => this.escape(i)).join(', ')}</p>` : ''}
+                </div>
+              ` : ''}
             </details>
           </div>
         ` : ''}
       </div>
     `;
 
-    // DETAILED VIEW - Metrics and deals first, then narrative analysis
+    // DETAILED VIEW - all three channels in full + score justification + summary stats
+    const totalSectorVcDeals = sectorVcDeals.length;
+    const totalSectorGrants = sectorGrants.length;
+    const totalPipelineOpps = pipelineOpportunities.length;
+
+    const statsLabels = {
+      vc_deal_count_core: 'Core VC deals',
+      vc_deal_count_adjacent: 'Adjacent VC deals',
+      translational_grant_count_core: 'Core translational grants',
+      translational_grant_count_adjacent: 'Adjacent translational grants',
+      applied_grant_count_core: 'Core applied grants',
+      applied_grant_count_adjacent: 'Adjacent applied grants',
+      basic_grant_count_core: 'Core basic grants',
+      basic_grant_count_adjacent: 'Adjacent basic grants',
+      open_pipeline_count_core: 'Core open pipeline',
+      open_pipeline_count_adjacent: 'Adjacent open pipeline',
+      standing_interest_pipeline_count: 'Standing-interest pipeline',
+      total_grant_funding_usd_core_adjacent: 'Total grant funding ($)',
+      venture_own_grant_count: 'Venture-own grants',
+      venture_own_grant_funding_usd: 'Venture-own grant $',
+      venture_own_vc_deal_count: 'Venture-own VC deals'
+    };
+    const statsRows = Object.keys(statsLabels)
+      .filter(k => summaryStatistics[k] !== undefined && summaryStatistics[k] !== null)
+      .map(k => {
+        const val = summaryStatistics[k];
+        const display = typeof val === 'number' && (k.includes('_usd') || k === 'total_grant_funding_usd_core_adjacent')
+          ? this.formatGrantAmount(val)
+          : this.escape(String(val));
+        return `<tr><td>${statsLabels[k]}</td><td>${display}</td></tr>`;
+      }).join('');
+
     const detailedHTML = `
       <div class="evidence-content">
         <div class="evidence-section">
           <h4>Sector Metrics</h4>
           <div class="metrics-row compact">
             <div class="metric-card small">
-              <span class="metric-label">Stage Maturity</span>
-              <span class="metric-value">${this.capitalize(String(stageMaturity).replace(/_/g, ' '))}</span>
+              <span class="metric-label">Highest VC Stage</span>
+              <span class="metric-value">${this.capitalize(String(highestVcStage).replace(/_/g, ' '))}</span>
             </div>
             <div class="metric-card small">
               <span class="metric-label">Scaled Winners</span>
               <span class="metric-value">${scaledWinners ? 'Yes' : 'No'}</span>
             </div>
             <div class="metric-card small">
-              <span class="metric-label">Distinct Sources</span>
-              <span class="metric-value">${formatted.distinctSources || '-'}</span>
+              <span class="metric-label">VC Trend</span>
+              <span class="metric-value">${formatTrend(vcFundingTrend)}</span>
+            </div>
+            <div class="metric-card small">
+              <span class="metric-label">Grant Trend</span>
+              <span class="metric-value">${formatTrend(grantFundingTrend)}</span>
             </div>
           </div>
-          ${investorTypes.length > 0 ? `<p><strong>Investor Types:</strong> ${investorTypes.map(t => this.escape(t)).join(', ')}</p>` : ''}
+          ${investorTypes.length > 0 ? `<p><strong>VC Investor Types:</strong> ${investorTypes.map(t => this.escape(t)).join(', ')}</p>` : ''}
+          ${primaryGrantFunders.length > 0 ? `<p><strong>Primary Grant Funders:</strong> ${primaryGrantFunders.map(t => this.escape(t)).join(', ')}</p>` : ''}
+          ${primaryPipelineAgencies.length > 0 ? `<p><strong>Primary Pipeline Agencies:</strong> ${primaryPipelineAgencies.map(t => this.escape(t)).join(', ')}</p>` : ''}
         </div>
 
-        ${verifiedDeals.length > 0 ? `
+        ${totalSectorVcDeals > 0 ? `
           <div class="evidence-section">
-            <h4>All Verified Sector Deals (${verifiedDeals.length})</h4>
+            <h4>All Sector VC Deals (${totalSectorVcDeals})</h4>
             <table class="data-table">
               <thead>
-                <tr>
-                  <th>Company</th>
-                  <th>Date</th>
-                  <th>Series</th>
-                  <th>Amount</th>
-                  <th>Relevance</th>
-                  <th>Investors</th>
-                </tr>
+                <tr><th>Company</th><th>Date</th><th>Stage</th><th>Amount</th><th>Relevance</th><th>Investors</th></tr>
               </thead>
-              <tbody>
-                ${verifiedDeals.map(d => `
-                  <tr>
-                    <td><strong>${this.escape(d.company || '')}</strong></td>
-                    <td>${this.formatDate(d.date)}</td>
-                    <td>${this.escape(d.series || 'N/A')}</td>
-                    <td>${this.formatDealAmount(d.amount)}</td>
-                    <td>${this.renderRelevanceBadge(d.relevance)}</td>
-                    <td class="investors-cell">${this.escape(this.truncate(d.investors || '', 60))}</td>
-                  </tr>
-                `).join('')}
-              </tbody>
+              <tbody>${renderVcDealsRows(sectorVcDeals)}</tbody>
+            </table>
+          </div>
+        ` : ''}
+
+        ${totalSectorGrants > 0 ? `
+          <div class="evidence-section">
+            <h4>All Federal Grants (${totalSectorGrants})</h4>
+            <table class="data-table">
+              <thead>
+                <tr><th>Title</th><th>Funder</th><th>Year</th><th>Amount</th><th>Classification</th><th>Relevance</th></tr>
+              </thead>
+              <tbody>${renderGrantsRows(sectorGrants)}</tbody>
+            </table>
+          </div>
+        ` : ''}
+
+        ${totalPipelineOpps > 0 ? `
+          <div class="evidence-section">
+            <h4>All Pipeline Opportunities (${totalPipelineOpps})</h4>
+            <table class="data-table">
+              <thead>
+                <tr><th>Program</th><th>Agency</th><th>Type</th><th>Status</th><th>Deadline</th><th>Relevance</th></tr>
+              </thead>
+              <tbody>${renderPipelineRows(pipelineOpportunities)}</tbody>
             </table>
           </div>
         ` : ''}
@@ -1169,24 +1346,38 @@ class AssessmentView {
           <h4>Scoring Analysis</h4>
           <details open class="collapsible-section">
             <summary><strong style="font-size: 13px;">Score Justification</strong></summary>
-            ${dealVolumeAssessment ? `<div class="landscape-narrative"><h5>Deal Volume</h5><p>${this.escape(dealVolumeAssessment)}</p></div>` : ''}
-            ${stageDistribution ? `<div class="landscape-narrative"><h5>Stage Distribution</h5><p>${this.escape(stageDistribution)}</p></div>` : ''}
-            ${investorQuality ? `<div class="landscape-narrative"><h5>Investor Quality</h5><p>${this.escape(investorQuality)}</p></div>` : ''}
+            ${vcAssessment ? `<div class="landscape-narrative"><h5>VC Channel</h5><p>${this.escape(vcAssessment)}</p></div>` : ''}
+            ${grantsAssessment ? `<div class="landscape-narrative"><h5>Grants Channel</h5><p>${this.escape(grantsAssessment)}</p></div>` : ''}
+            ${pipelineAssessment ? `<div class="landscape-narrative"><h5>Pipeline Channel</h5><p>${this.escape(pipelineAssessment)}</p></div>` : ''}
             ${scaledOutcomes ? `<div class="landscape-narrative"><h5>Scaled Outcomes</h5><p>${this.escape(scaledOutcomes)}</p></div>` : ''}
             ${trendAssessment ? `<div class="landscape-narrative"><h5>Trend Assessment</h5><p>${this.escape(trendAssessment)}</p></div>` : ''}
+            ${evidenceSummary ? `<div class="landscape-narrative"><h5>Evidence Summary</h5><p>${this.escape(evidenceSummary)}</p></div>` : ''}
           </details>
-          ${sectorEvidence.length > 0 ? `
+          ${keyEvidence.length > 0 ? `
             <details class="collapsible-section" style="margin-top: 8px;">
-              <summary><strong style="font-size: 13px;">Supporting Evidence (${sectorEvidence.length})</strong></summary>
-              ${sectorEvidence.map(e => `
-                <div class="landscape-narrative">
-                  <h5>${this.capitalize(this.escape(e.evidence_type || '').replace(/_/g, ' '))}</h5>
-                  <p>${this.escape(e.description || '')}${e.rubric_implication ? ` <em>${this.escape(e.rubric_implication)}</em>` : ''}</p>
+              <summary><strong style="font-size: 13px;">Key Evidence (${keyEvidence.length})</strong></summary>
+              ${keyEvidence.map(e => `
+                <div class="landscape-narrative key-evidence-item">
+                  <div class="key-evidence-header">${this.renderEvidenceTypeBadge(e.evidenceType)}</div>
+                  <p>${this.escape(e.description || '')}</p>
+                  ${e.scoreImplication ? `<p class="score-implication"><em>${this.escape(e.scoreImplication)}</em></p>` : ''}
                 </div>
               `).join('')}
             </details>
           ` : ''}
         </div>
+
+        ${statsRows ? `
+          <div class="evidence-section">
+            <details class="collapsible-section">
+              <summary><h4 style="display:inline;">Summary Statistics</h4></summary>
+              <table class="data-table summary-stats-table">
+                <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+                <tbody>${statsRows}</tbody>
+              </table>
+            </details>
+          </div>
+        ` : ''}
 
         ${dataGaps ? `
           <div class="evidence-section">
@@ -1197,25 +1388,20 @@ class AssessmentView {
       </div>
     `;
 
-    // SOURCES VIEW - Extract source URLs from verified deals and market reports
-    const dealSources = verifiedDeals.filter(d => d.sourceUrl).map(d => ({
-      label: `${d.company || 'Deal'} (${d.sourceName || 'source'})`,
+    // SOURCES VIEW - URLs from VC deals + pipeline opportunities + grant funders list
+    const dealSources = sectorVcDeals.filter(d => d.sourceUrl).map(d => ({
+      label: `${d.company || 'Deal'}${d.dateApprox ? ` (${d.dateApprox})` : ''}`,
       url: d.sourceUrl
     }));
-    const reportSources = marketReports.filter(r => r.sourceUrl).map(r => ({
-      label: r.title || 'Market Report',
-      url: r.sourceUrl
+    const pipelineSources = pipelineOpportunities.filter(p => p.sourceUrl).map(p => ({
+      label: `${p.programName || 'Program'} -- ${p.agency || ''}`,
+      url: p.sourceUrl
     }));
-    const programSources = governmentPrograms.filter(g => g.sourceUrl).map(g => ({
-      label: g.name || 'Government Program',
-      url: g.sourceUrl
-    }));
-    const allSources = [...dealSources, ...reportSources, ...programSources];
 
     const sourcesHTML = `
       <div class="evidence-content">
         <div class="evidence-section">
-          <h4>Deal Sources (${dealSources.length})</h4>
+          <h4>VC Deal Sources (${dealSources.length})</h4>
           ${dealSources.length > 0 ? `
             <ul class="source-list">
               ${dealSources.map(s => `
@@ -1225,13 +1411,13 @@ class AssessmentView {
                 </li>
               `).join('')}
             </ul>
-          ` : '<p>No source URLs available for deals.</p>'}
+          ` : '<p>No source URLs available for VC deals.</p>'}
         </div>
-        ${reportSources.length > 0 ? `
+        ${pipelineSources.length > 0 ? `
           <div class="evidence-section">
-            <h4>Market Report Sources (${reportSources.length})</h4>
+            <h4>Pipeline Opportunity Sources (${pipelineSources.length})</h4>
             <ul class="source-list">
-              ${reportSources.map(s => `
+              ${pipelineSources.map(s => `
                 <li>
                   <strong>${this.escape(s.label)}</strong>:
                   <a href="${this.escape(this.cleanSourceUrl(s.url))}" target="_blank" rel="noopener">${this.truncateUrl(s.url)}</a>
@@ -1240,22 +1426,16 @@ class AssessmentView {
             </ul>
           </div>
         ` : ''}
-        ${programSources.length > 0 ? `
+        ${sectorGrants.length > 0 ? `
           <div class="evidence-section">
-            <h4>Government Program Sources (${programSources.length})</h4>
-            <ul class="source-list">
-              ${programSources.map(s => `
-                <li>
-                  <strong>${this.escape(s.label)}</strong>:
-                  <a href="${this.escape(this.cleanSourceUrl(s.url))}" target="_blank" rel="noopener">${this.truncateUrl(s.url)}</a>
-                </li>
-              `).join('')}
-            </ul>
+            <h4>Federal Grants (${sectorGrants.length})</h4>
+            <p class="muted">Grant records are sourced from the Dimensions database (no per-grant URLs). Cited by grant_id in the grants table.</p>
+            ${primaryGrantFunders.length > 0 ? `<p><strong>Primary Funders:</strong> ${primaryGrantFunders.map(t => this.escape(t)).join(', ')}</p>` : ''}
           </div>
         ` : ''}
         <div class="evidence-section">
           <h4>Data Reliability</h4>
-          <p><strong>${this.capitalize(String(dataReliability).replace(/_/g, ' '))}</strong> -- ${totalDeals} verified deal(s) from ${formatted.distinctSources || 0} distinct source(s).</p>
+          <p><strong>${this.capitalize(String(dataReliability).replace(/_/g, ' '))}</strong> -- ${totalSectorVcDeals} VC deal(s), ${totalSectorGrants} grant(s), ${totalPipelineOpps} pipeline opportunit${totalPipelineOpps === 1 ? 'y' : 'ies'}.</p>
           ${dataGaps ? `<p><strong>Data Gaps:</strong> ${this.escape(dataGaps)}</p>` : ''}
         </div>
       </div>
