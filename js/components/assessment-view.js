@@ -1100,10 +1100,6 @@ class AssessmentView {
             <span class="metric-value">${formatTrend(grantFundingTrend)}</span>
           </div>
           <div class="metric-card">
-            <span class="metric-label">WSA</span>
-            <span class="metric-value">${wsaRounded}</span>
-          </div>
-          <div class="metric-card">
             <span class="metric-label">Data Reliability</span>
             <span class="metric-value">${this.capitalize(String(dataReliability).replace(/_/g, ' '))}</span>
           </div>
