@@ -1547,6 +1547,15 @@ class AssessmentView {
     // v3: job_to_be_done at top level
     const jobToBeDone = marketOverview.jobToBeDone || analysisRaw.job_to_be_done || '';
 
+    // -- Synthesis detection (declared early because the lit-chip and several
+    //    downstream branches gate on whether synthesis surfaced competitors). --
+    // Mode toggle: synthesis-led competitive layout vs v04.1 fallback layout.
+    // Falls back to the v04.1 layout when synthesis is absent or its
+    // unifiedCompetitors array is empty.
+    const synF = synthesis?.formatted || null;
+    const hasSynthesisCompetitors = !!(synF && Array.isArray(synF.unifiedCompetitors) && synF.unifiedCompetitors.length > 0);
+    const hasSynthesisNarrative   = !!(synF && synF.competitiveNarrative && synF.competitiveNarrative.trim());
+
     // -- Scientific evidence (Literature Review) fragments --
     // Surfaced via progressive disclosure so the existing tabs don't bloat:
     //   * Summary tab: single inline chip when there are any signals.
@@ -1630,9 +1639,9 @@ class AssessmentView {
     // Rationale is replaced with synthesis.formatted.competitiveNarrative.
     // Falls back to the v04.1 layout (existing grid + lit panel) when
     // synthesis is absent.
-    const synF = synthesis?.formatted || null;
-    const hasSynthesisCompetitors = !!(synF && Array.isArray(synF.unifiedCompetitors) && synF.unifiedCompetitors.length > 0);
-    const hasSynthesisNarrative   = !!(synF && synF.competitiveNarrative && synF.competitiveNarrative.trim());
+    // (synF / hasSynthesisCompetitors / hasSynthesisNarrative were declared
+    // earlier in this function, near the litF block, because the lit-chip
+    // gates on hasSynthesisCompetitors — see the comment up there.)
 
     // Reranker aggregates for the metrics row + below-grid summary line.
     // These can come from either the new Competitive flow's out-0 (preferred,

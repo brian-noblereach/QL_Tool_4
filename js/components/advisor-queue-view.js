@@ -1016,6 +1016,15 @@ const AdvisorQueueView = {
         }
         enable('summary');
 
+        // Always land on the Overview tab when opening an assessment from the
+        // queue, regardless of which tab the advisor was last viewing on a
+        // prior venture. TabManager.activeTab is NOT reset by
+        // assessmentView.reset(), so without this explicit activation the
+        // previous venture's active tab (e.g., Competitive) stays selected and
+        // the user sees the new venture's wrong-tab content. activateTab()
+        // handles the panel-hide / panel-show transition.
+        try { tm?.activateTab('overview'); } catch (e) { Debug.warn('[v04] activateTab(overview) failed:', e); }
+
         // Populate the summary tab (score grid + recommendation section) up
         // front so the advisor sees the full layout — including the Submit
         // Final Assessment button — without having to submit a per-dimension
