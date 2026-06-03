@@ -1041,11 +1041,13 @@ class AssessmentView {
     const formatTrend = (t) => this.capitalize(String(t || 'unknown').replace(/_/g, ' '));
 
     // Compose the inline WSA scoring-calc line for the AI Rationale block.
-    // Plain language, not arithmetic the advisor has to verify — but visible
-    // enough that they can sanity-check the AI's reasoning.
-    const wsaCalcLine = (wsaArithmetic || bandAssignment || modifiersApplied.length > 0)
-      ? `<p class="ai-scoring-calc"><strong>Scoring calculation:</strong> WSA = ${this.escape(String(wsaRounded))}${bandAssignment ? ` (${this.escape(bandAssignment)})` : ''}${modifiersApplied.length > 0 ? `; modifiers: ${modifiersApplied.map(m => this.escape(m)).join(', ')}` : ''}${wsaArithmetic ? `<br><span class="ai-scoring-arithmetic">${this.escape(wsaArithmetic)}</span>` : ''}</p>`
-      : '';
+    // Collapsed by default — click the summary line to expand the modifiers list
+    // and arithmetic paragraph.
+    const wsaHeadline = `<strong>Scoring calculation:</strong> WSA = ${this.escape(String(wsaRounded))}${bandAssignment ? ` (${this.escape(bandAssignment)})` : ''}`;
+    const hasCalcDetail = wsaArithmetic || modifiersApplied.length > 0;
+    const wsaCalcLine = hasCalcDetail
+      ? `<details class="ai-scoring-calc"><summary>${wsaHeadline}</summary>${modifiersApplied.length > 0 ? `<p class="ai-scoring-modifiers"><strong>Modifiers:</strong> ${modifiersApplied.map(m => this.escape(m)).join('; ')}</p>` : ''}${wsaArithmetic ? `<p class="ai-scoring-arithmetic">${this.escape(wsaArithmetic)}</p>` : ''}</details>`
+      : (wsaRounded ? `<p class="ai-scoring-calc">${wsaHeadline}</p>` : '');
 
     // Render helpers for the three channel tables
     const renderVcDealsRows = (deals) => deals.map(d => `
