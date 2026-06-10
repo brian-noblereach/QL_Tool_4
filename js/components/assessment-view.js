@@ -2381,6 +2381,38 @@ class AssessmentView {
     const confidence = formatted.dataConfidence || ipData?.data_confidence;
     const confidenceJustification = formatted.dataConfidenceJustification || ipData?.data_confidence_justification || '';
 
+    // v04.4 claim-aware fields
+    const ownedIpRelevance = companyIP.ownedIpRelevance || '';
+    const landscapeInterp = formatted.landscapeDensityInterpretation || '';
+    const claimScope = formatted.claimScope || { tierA: [], tierB: [], priorArtOnly: [], notBlocking: [], summary: '' };
+    const tierA = claimScope.tierA || [];
+    const tierB = claimScope.tierB || [];
+    const priorArtOnly = claimScope.priorArtOnly || [];
+    const notBlocking = claimScope.notBlocking || [];
+    const bm = formatted.blockingMetrics || {};
+    const freshness = formatted.patentFreshness || {};
+    // Claim-aware attachments produce a non-empty summary or at least one classified patent.
+    // Legacy (pre-v04.4) attachments leave all of these empty -> fall back to the legacy layout.
+    const hasClaimAware = !!(claimScope.summary || tierA.length || tierB.length || priorArtOnly.length || notBlocking.length);
+    const tierAActive = (bm.activeCoreBlockers != null) ? bm.activeCoreBlockers : tierA.length;
+    const tierBWatch = (bm.pendingCoreWatch || 0) + (bm.adjacentActiveWatch || 0);
+    const stalenessActive = freshness.statusStalenessFlag || freshness.claimsStalenessFlag;
+
+    // Renders one claim-grounded patent card (Tier A/B/C/D).
+    const renderClaimPatent = (p) => `
+      <div class="claim-patent-card tier-${(p.blockingTier || '').charAt(0).toLowerCase()}">
+        <div class="claim-patent-head">
+          ${p.link ? `<a href="${this.escape(this.cleanPatentLink(p.link))}" target="_blank" rel="noopener">${this.escape(p.id)}</a>` : `<strong>${this.escape(p.id)}</strong>`}
+          <span class="claim-patent-assignee">${this.escape(p.assignee)}</span>
+          <span class="status-badge">${this.escape(p.status)}</span>
+          ${p.blockingConfidence ? `<span class="confidence-badge conf-${this.escape(p.blockingConfidence)}">${this.capitalize(p.blockingConfidence)} confidence</span>` : ''}
+          ${!p.claimsAvailable ? `<span class="claims-unavailable-badge">claims unavailable</span>` : ''}
+        </div>
+        ${p.claimOverlapSummary ? `<p class="claim-overlap">${this.escape(p.claimOverlapSummary)}</p>` : ''}
+        ${p.missingElements && p.missingElements.length ? `<p class="claim-missing"><strong>Missing / uncertain elements:</strong> ${this.escape(p.missingElements.join('; '))}</p>` : ''}
+      </div>
+    `;
+
     // SUMMARY VIEW
     const summaryHTML = `
       <div class="evidence-content">
@@ -2407,6 +2439,23 @@ class AssessmentView {
           </div>
         </div>
 
+        ${hasClaimAware ? `
+        <div class="evidence-section ip-claim-headline">
+          <h4>Claim-Grounded Blocking</h4>
+          <div class="claim-blocking-banner ${tierAActive > 0 ? 'blocking-flag' : 'blocking-clear'}">
+            <span class="claim-blocking-count">${tierAActive}</span>
+            <span class="claim-blocking-label">active core third-party blocker${tierAActive === 1 ? '' : 's'} (Tier A)</span>
+          </div>
+          <div class="claim-blocking-substats">
+            <span>Tier-B watch items: <strong>${tierBWatch}</strong></span>
+            <span>Venture-owned core patents: <strong>${bm.ventureOwnedCore || 0}</strong></span>
+            ${bm.claimsUnavailableHighRel > 0 ? `<span>High-relevance, claims unavailable: <strong>${bm.claimsUnavailableHighRel}</strong></span>` : ''}
+          </div>
+          ${claimScope.summary ? `<p class="claim-scope-summary">${this.escape(claimScope.summary)}</p>` : ''}
+          ${stalenessActive ? `<div class="staleness-warning">⚠ ${this.escape(freshness.stalenessExplanation || 'Patent status / claims data may be stale; verify before relying on this assessment.')}</div>` : ''}
+        </div>
+        ` : ''}
+
         <div class="evidence-section">
           <h4>AI Assessment Rationale</h4>
           <div class="ai-rationale">${this.formatRationale(justification || riskAnalysis || data?.rubricDescription || 'No rationale provided.')}</div>
@@ -2415,6 +2464,7 @@ class AssessmentView {
         <div class="evidence-section">
           <h4>Company IP Position</h4>
           <p>${this.escape(companyIPSummary || 'No IP summary available.')}</p>
+          ${ownedIpRelevance ? `<p class="owned-ip-relevance"><strong>Relevance of owned IP:</strong> ${this.escape(ownedIpRelevance)}</p>` : ''}
           <div style="margin-top: 8px;">
             ${companyPatentsFound > 0 ? `<span class="metric-inline">Patents Found: ${companyPatentsFound}</span>` : ''}
             ${blockingPatentsIdentified ? `<span class="warning-badge">Blocking patents identified</span>` : ''}
@@ -2464,7 +2514,30 @@ class AssessmentView {
               <span class="metric-value">${this.capitalize(String(patentDensity).replace(/_/g, ' '))}</span>
             </div>
           </div>
+          ${landscapeInterp ? `<p class="landscape-interp">${this.escape(landscapeInterp)}</p>` : ''}
         </div>
+
+        ${hasClaimAware ? `
+          <div class="evidence-section claim-scope-section">
+            <h4>Claim-Grounded Blocking Assessment</h4>
+            ${claimScope.summary ? `<div class="ai-rationale">${this.formatRationale(claimScope.summary)}</div>` : ''}
+            ${tierA.length ? `
+              <h5 class="tier-heading tier-a-heading">Tier A &mdash; Core Blockers (${tierA.length})</h5>
+              ${tierA.map(renderClaimPatent).join('')}
+            ` : '<p class="tier-empty">No Tier-A core blockers identified &mdash; no third-party claim plausibly covers every core venture element.</p>'}
+            ${tierB.length ? `
+              <h5 class="tier-heading tier-b-heading">Tier B &mdash; Watch Items (${tierB.length})</h5>
+              ${tierB.map(renderClaimPatent).join('')}
+            ` : ''}
+            ${(priorArtOnly.length || notBlocking.length) ? `
+              <details class="claim-scope-secondary">
+                <summary>Prior-art-only &amp; non-blocking patents (${priorArtOnly.length + notBlocking.length})</summary>
+                ${priorArtOnly.length ? `<h5 class="tier-heading">Prior Art Only (${priorArtOnly.length})</h5>${priorArtOnly.map(renderClaimPatent).join('')}` : ''}
+                ${notBlocking.length ? `<h5 class="tier-heading">Not Blocking (${notBlocking.length})</h5>${notBlocking.map(renderClaimPatent).join('')}` : ''}
+              </details>
+            ` : ''}
+          </div>
+        ` : ''}
 
         ${riskAnalysis ? `
           <div class="evidence-section">
@@ -2484,6 +2557,7 @@ class AssessmentView {
                   <th>Assignee</th>
                   <th>Year</th>
                   <th>Blocking</th>
+                  ${hasClaimAware ? '<th>Claim Overlap</th>' : ''}
                   <th>Status</th>
                 </tr>
               </thead>
@@ -2495,6 +2569,7 @@ class AssessmentView {
                     <td>${this.escape(p.assignee)}</td>
                     <td>${p.year || '-'}</td>
                     <td><span class="risk-badge risk-${(p.blockingPotential || 'low').toLowerCase()}">${this.capitalize(p.blockingPotential || 'low')}</span></td>
+                    ${hasClaimAware ? `<td>${p.claimOverlapSummary ? `${p.blockingTier ? `<span class="tier-badge tier-${this.escape(p.blockingTier.charAt(0).toLowerCase())}">${this.escape(p.blockingTier.charAt(0))}</span> ` : ''}${this.escape(this.truncate(p.claimOverlapSummary, 90))}` : (p.claimsAvailable === false ? '<em>claims unavailable</em>' : '-')}</td>` : ''}
                     <td>${this.escape(p.status || '')}</td>
                   </tr>
                 `).join('')}
@@ -2508,6 +2583,14 @@ class AssessmentView {
             <h4>Scoring Methodology</h4>
             ${(() => {
               const stepLabels = {
+                // v04.4 claim-aware grader steps
+                claim_grounded_blocking_assessment: 'Claim-Grounded Blocking Assessment',
+                fto_exposure_axis: 'Freedom-to-Operate Exposure',
+                protectability_axis: 'Protectability',
+                own_ip_assessment: 'Venture-Owned IP Assessment',
+                status_and_claims_freshness_impact: 'Status & Claims Freshness Impact',
+                final_score_logic: 'Final Score Logic',
+                // legacy (pre-v04.4) grader steps
                 patent_density_baseline: 'Patent Density Baseline',
                 blocking_patent_assessment: 'Blocking Patent Assessment',
                 venture_ip_assessment: 'IP Assessment',
@@ -2578,6 +2661,18 @@ class AssessmentView {
             <div class="litigator-list">
               ${topOwners.slice(0, 8).map(o => `<span class="litigator-badge">${this.escape(o.assignee)} (${o.patentCount})</span>`).join('')}
             </div>
+          </div>
+        ` : ''}
+
+        ${hasClaimAware ? `
+          <div class="evidence-section">
+            <h4>Patent Data Freshness</h4>
+            <ul class="compact-list freshness-list">
+              ${freshness.primaryClaimsSource ? `<li><strong>Primary claims source:</strong> ${this.escape(freshness.primaryClaimsSource)}</li>` : ''}
+              ${freshness.dimensionsCheckedAt ? `<li><strong>Patent records checked:</strong> ${this.escape(freshness.dimensionsCheckedAt)}</li>` : ''}
+              ${freshness.claimsCheckedAt ? `<li><strong>Claims checked:</strong> ${this.escape(freshness.claimsCheckedAt)}</li>` : ''}
+            </ul>
+            ${stalenessActive ? `<div class="staleness-warning">⚠ ${this.escape(freshness.stalenessExplanation || 'Patent status / claims data may be stale.')}</div>` : `<p class="freshness-ok">Patent status and claims data are current as of the timestamps above.</p>`}
           </div>
         ` : ''}
 

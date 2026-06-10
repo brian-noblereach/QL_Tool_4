@@ -2972,6 +2972,53 @@ details.ai-scoring-calc[open] > summary {
 .patent-holder-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 12px; background: var(--slate-50); border: 1px solid var(--slate-200); border-radius: var(--radius-sm); color: var(--slate-700); }
 .patent-holder-chip strong { color: var(--nr-teal-1); font-size: 13px; }
 
+/* ---------- Claim-Grounded Blocking (v04.4 claim-aware IP) ---------- */
+.ip-claim-headline { border-left: 3px solid var(--nr-teal-1); padding-left: 12px; }
+.claim-blocking-banner { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 8px; }
+.claim-blocking-banner.blocking-clear { background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3); }
+.claim-blocking-banner.blocking-flag { background: rgba(220, 38, 38, 0.1); border: 1px solid rgba(220, 38, 38, 0.3); }
+.claim-blocking-count { font-size: 28px; font-weight: 700; line-height: 1; }
+.blocking-clear .claim-blocking-count { color: var(--brand-success, #059669); }
+.blocking-flag .claim-blocking-count { color: var(--brand-error, #dc2626); }
+.claim-blocking-label { font-size: 13px; font-weight: 600; color: var(--slate-700); }
+.claim-blocking-substats { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--slate-600); margin-bottom: 8px; }
+.claim-blocking-substats strong { color: var(--slate-800); }
+.claim-scope-summary { font-size: 13px; color: var(--slate-700); line-height: 1.6; margin: 0; }
+.owned-ip-relevance { font-size: 13px; color: var(--slate-600); line-height: 1.6; margin-top: 6px; }
+.landscape-interp { font-size: 13px; color: var(--slate-600); line-height: 1.6; margin-top: 10px; }
+.staleness-warning { font-size: 12px; color: #92400e; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.3); border-radius: var(--radius-sm); padding: 8px 12px; margin-top: 8px; }
+.freshness-ok { font-size: 12px; color: var(--slate-500); margin-top: 8px; }
+.freshness-list li { font-size: 13px; }
+
+/* Claim-scope patent cards */
+.claim-scope-section .tier-heading { font-size: 13px; font-weight: 700; margin: 14px 0 6px; color: var(--slate-700); }
+.tier-a-heading { color: var(--brand-error, #dc2626); }
+.tier-b-heading { color: #b45309; }
+.tier-empty { font-size: 13px; color: var(--slate-500); margin: 8px 0; }
+.claim-patent-card { border: 1px solid var(--slate-200); border-left: 3px solid var(--slate-300); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 8px; background: var(--slate-50); }
+.claim-patent-card.tier-a { border-left-color: var(--brand-error, #dc2626); }
+.claim-patent-card.tier-b { border-left-color: #d97706; }
+.claim-patent-card.tier-c { border-left-color: var(--slate-400); }
+.claim-patent-card.tier-d { border-left-color: var(--slate-300); }
+.claim-patent-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; }
+.claim-patent-head a, .claim-patent-head strong { font-weight: 700; color: var(--nr-teal-1); }
+.claim-patent-assignee { color: var(--slate-600); }
+.claim-patent-head .status-badge { font-size: 11px; padding: 2px 8px; background: var(--slate-100); border: 1px solid var(--slate-200); border-radius: var(--radius-sm); color: var(--slate-700); }
+.confidence-badge { font-size: 11px; padding: 2px 8px; border-radius: var(--radius-sm); font-weight: 600; }
+.confidence-badge.conf-high { background: rgba(220, 38, 38, 0.12); color: var(--brand-error, #dc2626); }
+.confidence-badge.conf-medium { background: rgba(245, 158, 11, 0.15); color: #92400e; }
+.confidence-badge.conf-low { background: var(--slate-100); color: var(--slate-600); }
+.claims-unavailable-badge { font-size: 11px; padding: 2px 8px; background: var(--slate-100); border: 1px dashed var(--slate-300); border-radius: var(--radius-sm); color: var(--slate-500); font-style: italic; }
+.claim-overlap { font-size: 13px; color: var(--slate-700); line-height: 1.55; margin: 6px 0 4px; }
+.claim-missing { font-size: 12px; color: var(--slate-600); line-height: 1.5; margin: 0; }
+.claim-scope-secondary { margin-top: 12px; }
+.claim-scope-secondary summary { font-size: 13px; font-weight: 600; color: var(--slate-600); cursor: pointer; }
+.tier-badge { display: inline-block; width: 18px; height: 18px; line-height: 18px; text-align: center; font-size: 11px; font-weight: 700; border-radius: 50%; color: #fff; }
+.tier-badge.tier-a { background: var(--brand-error, #dc2626); }
+.tier-badge.tier-b { background: #d97706; }
+.tier-badge.tier-c { background: var(--slate-400); }
+.tier-badge.tier-d { background: var(--slate-300); }
+
 /* ---------- Landscape Narrative Sections ---------- */
 .landscape-narrative { margin-bottom: 16px; }
 .landscape-narrative h5 { font-size: 13px; font-weight: 600; color: var(--slate-700); margin-bottom: 4px; }

@@ -57,7 +57,7 @@ class AnalysisPipeline {
       {
         name: 'IP Landscape',
         key: 'iprisk',
-        duration: 150,  // observed range 80-215s; mid-high estimate
+        duration: 200,  // v04.4 claim-aware 10-node flow; observed ~210s (2026-06-10)
         status: 'pending',
         startTime: null,
         endTime: null,

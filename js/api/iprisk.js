@@ -165,6 +165,10 @@ const IPRiskAPI = {
     if (!Array.isArray(report.company_ip_position.owned_patent_ids)) {
       report.company_ip_position.owned_patent_ids = [];
     }
+    // v04.4 claim-aware: relevance of the venture's own IP
+    if (typeof report.company_ip_position.owned_ip_relevance !== 'string') {
+      report.company_ip_position.owned_ip_relevance = '';
+    }
 
     // Landscape analysis
     if (!report.landscape_analysis || typeof report.landscape_analysis !== 'object') {
@@ -180,6 +184,43 @@ const IPRiskAPI = {
     if (!Array.isArray(landscape.unique_patentable_features)) landscape.unique_patentable_features = [];
     if (!Array.isArray(landscape.crowded_patentable_features)) landscape.crowded_patentable_features = [];
     if (!Array.isArray(landscape.top_patent_owners)) landscape.top_patent_owners = [];
+    if (typeof landscape.landscape_density_interpretation !== 'string') {
+      landscape.landscape_density_interpretation = '';
+    }
+
+    // v04.4 claim-aware: claim-grounded blocking assessment (Tier A/B/C/D)
+    if (!report.claim_scope_assessment || typeof report.claim_scope_assessment !== 'object') {
+      report.claim_scope_assessment = {};
+    }
+    const cs = report.claim_scope_assessment;
+    if (!Array.isArray(cs.tier_a_core_blockers)) cs.tier_a_core_blockers = [];
+    if (!Array.isArray(cs.tier_b_watch_items)) cs.tier_b_watch_items = [];
+    if (!Array.isArray(cs.prior_art_only)) cs.prior_art_only = [];
+    if (!Array.isArray(cs.not_blocking_relevant_patents)) cs.not_blocking_relevant_patents = [];
+    if (typeof cs.claim_scope_summary !== 'string') cs.claim_scope_summary = '';
+
+    // v04.4 claim-aware: blocking metrics
+    if (!report.blocking_metrics || typeof report.blocking_metrics !== 'object') {
+      report.blocking_metrics = {};
+    }
+    const bm = report.blocking_metrics;
+    ['active_core_third_party_blocker_count', 'pending_core_watch_count',
+     'adjacent_active_watch_count', 'venture_owned_core_patent_count',
+     'claims_unavailable_high_relevance_count'].forEach(k => {
+      if (typeof bm[k] !== 'number') bm[k] = 0;
+    });
+
+    // v04.4 claim-aware: patent data freshness
+    if (!report.patent_data_freshness || typeof report.patent_data_freshness !== 'object') {
+      report.patent_data_freshness = {};
+    }
+    const fresh = report.patent_data_freshness;
+    if (typeof fresh.dimensions_checked_at !== 'string') fresh.dimensions_checked_at = '';
+    if (typeof fresh.claims_checked_at !== 'string') fresh.claims_checked_at = '';
+    if (typeof fresh.primary_claims_source !== 'string') fresh.primary_claims_source = '';
+    if (typeof fresh.status_staleness_flag !== 'boolean') fresh.status_staleness_flag = false;
+    if (typeof fresh.claims_staleness_flag !== 'boolean') fresh.claims_staleness_flag = false;
+    if (typeof fresh.staleness_explanation !== 'string') fresh.staleness_explanation = '';
 
     // Top relevant patents
     if (!Array.isArray(report.top_relevant_patents)) report.top_relevant_patents = [];
@@ -256,7 +297,26 @@ const IPRiskAPI = {
   },
 
   /**
-   * Format data for UI consumption (v3 IP Landscape schema)
+   * Map a claim_scope_assessment patent (v04.4 claim-aware schema) for display.
+   */
+  mapClaimScopePatent(p) {
+    p = p || {};
+    return {
+      id: p.patent_id || 'Unknown',
+      assignee: p.assignee || 'Unknown',
+      status: p.status || 'Unknown',
+      claimsAvailable: !!p.claims_available,
+      claimsSource: p.claims_source || '',
+      claimOverlapSummary: p.claim_overlap_summary || '',
+      missingElements: Array.isArray(p.missing_or_uncertain_elements) ? p.missing_or_uncertain_elements : [],
+      blockingTier: p.blocking_tier || '',
+      blockingConfidence: p.blocking_confidence || '',
+      link: p.link || ''
+    };
+  },
+
+  /**
+   * Format data for UI consumption (v04.4 claim-aware IP Landscape schema)
    */
   formatForDisplay(report, scoreData, score) {
     const ipPos = report.company_ip_position || {};
@@ -264,6 +324,9 @@ const IPRiskAPI = {
     const risk = report.risk_assessment || {};
     const table = report.patent_table || {};
     const evalSteps = scoreData?.evaluation_steps || {};
+    const claimScope = report.claim_scope_assessment || {};
+    const blockingMetrics = report.blocking_metrics || {};
+    const freshness = report.patent_data_freshness || {};
 
     return {
       score,
@@ -272,7 +335,8 @@ const IPRiskAPI = {
       companyIP: {
         patentsFound: ipPos.patents_found || 0,
         summary: ipPos.summary || '',
-        ownedPatentIds: ipPos.owned_patent_ids || []
+        ownedPatentIds: ipPos.owned_patent_ids || [],
+        ownedIpRelevance: ipPos.owned_ip_relevance || ''
       },
 
       // Landscape analysis
@@ -280,12 +344,13 @@ const IPRiskAPI = {
       totalRelevantPatents: landscape.total_relevant_patents_found || 0,
       uniqueFeatures: landscape.unique_patentable_features || [],
       crowdedFeatures: landscape.crowded_patentable_features || [],
+      landscapeDensityInterpretation: landscape.landscape_density_interpretation || '',
       topOwners: (landscape.top_patent_owners || []).map(owner => ({
         assignee: owner.assignee || 'Unknown',
         patentCount: owner.patent_count ?? 0
       })),
 
-      // Top relevant patents
+      // Top relevant patents (v04.4: now carry claim-grounding fields)
       relevantPatents: (report.top_relevant_patents || []).map(patent => ({
         id: patent.patent_id || 'Unknown',
         title: patent.title || 'Untitled',
@@ -294,8 +359,40 @@ const IPRiskAPI = {
         relevance: patent.relevance || '',
         blockingPotential: patent.blocking_potential || 'low',
         status: patent.status || 'Unknown',
-        link: patent.link || ''
+        link: patent.link || '',
+        ownedByVenture: !!patent.owned_by_venture,
+        claimsAvailable: !!patent.claims_available,
+        claimsSource: patent.claims_source || '',
+        claimOverlapSummary: patent.claim_overlap_summary || '',
+        missingElements: Array.isArray(patent.missing_or_uncertain_elements) ? patent.missing_or_uncertain_elements : [],
+        blockingTier: patent.blocking_tier || '',
+        blockingConfidence: patent.blocking_confidence || ''
       })),
+
+      // v04.4 claim-aware: claim-grounded blocking assessment
+      claimScope: {
+        tierA: (claimScope.tier_a_core_blockers || []).map(p => this.mapClaimScopePatent(p)),
+        tierB: (claimScope.tier_b_watch_items || []).map(p => this.mapClaimScopePatent(p)),
+        priorArtOnly: (claimScope.prior_art_only || []).map(p => this.mapClaimScopePatent(p)),
+        notBlocking: (claimScope.not_blocking_relevant_patents || []).map(p => this.mapClaimScopePatent(p)),
+        summary: claimScope.claim_scope_summary || ''
+      },
+      blockingMetrics: {
+        activeCoreBlockers: blockingMetrics.active_core_third_party_blocker_count ?? 0,
+        pendingCoreWatch: blockingMetrics.pending_core_watch_count ?? 0,
+        adjacentActiveWatch: blockingMetrics.adjacent_active_watch_count ?? 0,
+        ventureOwnedCore: blockingMetrics.venture_owned_core_patent_count ?? 0,
+        claimsUnavailableHighRel: blockingMetrics.claims_unavailable_high_relevance_count ?? 0
+      },
+      patentFreshness: {
+        dimensionsCheckedAt: freshness.dimensions_checked_at || '',
+        claimsCheckedAt: freshness.claims_checked_at || '',
+        primaryClaimsSource: freshness.primary_claims_source || '',
+        statusStalenessFlag: !!freshness.status_staleness_flag,
+        claimsStalenessFlag: !!freshness.claims_staleness_flag,
+        stalenessExplanation: freshness.staleness_explanation || ''
+      },
+      analysisGeneratedAt: report.analysis_generated_at || '',
 
       // Risk assessment
       overallRisk: risk.overall_risk || 'medium',
