@@ -278,11 +278,11 @@ const Validators = {
   validateExportData(state) {
     const errors = [];
 
-    if (!state.company) errors.push('Company data is missing');
-    if (!state.team || state.team.score === undefined) errors.push('Team assessment is incomplete');
-    if (!state.competitive || !state.competitive.assessment) errors.push('Competitive assessment is incomplete');
-    if (!state.market || !state.market.scoring) errors.push('Market assessment is incomplete');
-    if (!state.iprisk || state.iprisk.score === undefined) errors.push('IP risk assessment is incomplete');
+    // Only company data is strictly required to produce a report. Individual
+    // dimension assessments are optional — the export skips any section whose
+    // data is missing so an advisor can export a partial assessment without
+    // completing every field.
+    if (!state || !state.company) errors.push('Company data is missing');
 
     return { valid: errors.length === 0, errors };
   },

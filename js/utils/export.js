@@ -210,8 +210,16 @@ const ExportUtility = {
 
       this.setupDocument(doc);
 
-      // Get venture name (custom name if set, otherwise AI-generated)
-      const ventureName = window.app?.getVentureName() || data.company.company_overview?.name || 'Company';
+      // Get venture name (custom name if set, otherwise AI-generated).
+      // SmartsheetIntegration.getVentureName() is the canonical resolver in v04
+      // (queue name -> #venture-name-text -> AI name). window.app has no such
+      // method, so calling it directly throws "is not a function".
+      const ventureName =
+        (typeof window.SmartsheetIntegration?.getVentureName === 'function'
+          ? window.SmartsheetIntegration.getVentureName()
+          : null) ||
+        data.company?.company_overview?.name ||
+        'Company';
 
       // Store venture name in data for use by page methods
       data.ventureName = ventureName;
@@ -237,12 +245,18 @@ const ExportUtility = {
         PdfLayout.addPage(doc);
         this.addFundingAssessment(doc, data);
       }
-      PdfLayout.addPage(doc);
-      this.addCompetitiveAssessment(doc, data);
-      PdfLayout.addPage(doc);
-      this.addMarketAssessment(doc, data);
-      PdfLayout.addPage(doc);
-      this.addIpRiskAssessment(doc, data);
+      if (data.competitive) {
+        PdfLayout.addPage(doc);
+        this.addCompetitiveAssessment(doc, data);
+      }
+      if (data.market) {
+        PdfLayout.addPage(doc);
+        this.addMarketAssessment(doc, data);
+      }
+      if (data.iprisk) {
+        PdfLayout.addPage(doc);
+        this.addIpRiskAssessment(doc, data);
+      }
       if (data.solutionvalue?.userScore) {
         PdfLayout.addPage(doc);
         this.addSolutionValueAssessment(doc, data);
@@ -269,12 +283,18 @@ const ExportUtility = {
         PdfLayout.addPage(doc);
         this.addTeamDetails(doc, data.team);
       }
-      PdfLayout.addPage(doc);
-      this.addCompetitiveDetails(doc, data.competitive);
-      PdfLayout.addPage(doc);
-      this.addMarketDetails(doc, data.market);
-      PdfLayout.addPage(doc);
-      this.addIpRiskDetails(doc, data.iprisk);
+      if (data.competitive) {
+        PdfLayout.addPage(doc);
+        this.addCompetitiveDetails(doc, data.competitive);
+      }
+      if (data.market) {
+        PdfLayout.addPage(doc);
+        this.addMarketDetails(doc, data.market);
+      }
+      if (data.iprisk) {
+        PdfLayout.addPage(doc);
+        this.addIpRiskDetails(doc, data.iprisk);
+      }
 
       // Generate filename
       const timestamp = new Date().toISOString().split('T')[0];
@@ -406,18 +426,18 @@ const ExportUtility = {
       },
       {
         title: 'Competitive Winnability',
-        ai: formatScore(data.competitive.assessment.score),
-        user: formatScore(data.competitive.userScore)
+        ai: formatScore(data.competitive?.assessment?.score),
+        user: formatScore(data.competitive?.userScore)
       },
       {
         title: 'Market Opportunity',
-        ai: formatScore(data.market.scoring.score),
-        user: formatScore(data.market.userScore)
+        ai: formatScore(data.market?.scoring?.score),
+        user: formatScore(data.market?.userScore)
       },
       {
         title: 'IP Landscape',
-        ai: formatScore(data.iprisk.score),
-        user: formatScore(data.iprisk.userScore)
+        ai: formatScore(data.iprisk?.score),
+        user: formatScore(data.iprisk?.userScore)
       },
       {
         title: 'Solution Value',
