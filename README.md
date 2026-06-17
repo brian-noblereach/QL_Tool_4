@@ -124,7 +124,7 @@ Backend components (Google Apps Script proxy, PowerShell runner, Smartsheet sche
    - Portfolio
    - Venture URL **and / or** SharePoint input-file URL(s) — one URL per line; commonly a pitch deck plus an invention disclosure. Files must already be uploaded to the SharePoint `queue-inputs/` folder.
    - Optional: Institution, Pre-load notes
-3. Submit. The row appears in the queue with status `Queued`. Within 5 minutes the runner picks it up, status flips to `Running`, then `Ready` when the AI analysis finishes (typically ~8 min).
+3. Submit. The row appears in the queue with status `Queued`. Within 5 minutes the runner picks it up, status flips to `Running`, then `Ready` when the AI analysis finishes (typically ~8 min). If the submitted materials are too thin to assess the venture, the runner halts before scoring and marks the row `Failed` with an `INSUFFICIENT_INPUT:` reason — add more source material (pitch deck / invention disclosure / working URL) and re-queue.
 
 ### As an Advisor
 
@@ -132,7 +132,7 @@ Backend components (Google Apps Script proxy, PowerShell runner, Smartsheet sche
 2. Pick your name from the dropdown.
 3. You'll see up to four sections, each with a count badge:
    - **In Progress** — ventures the runner is currently working on, or queued behind it. No action — the page auto-refreshes every 30 seconds, so they slide into the next section when ready.
-   - **Needs Attention** — ventures whose AI analysis failed. The tooltip on the FAILED pill shows the last error; ping the Associate to retry.
+   - **Needs Attention** — ventures whose AI analysis failed. The tooltip on the FAILED pill shows the last error; ping the Associate to retry. This also includes ventures the tool **halted for insufficient input** (error starts with `INSUFFICIENT_INPUT:`): the submitted materials didn't contain enough to assess the venture, so no scores were produced. These need *better input* (a pitch deck, invention disclosure, or working URL) — re-queueing without adding material will halt again.
    - **To Review** — ventures ready for your scoring.
    - **Completed** — ventures you've already submitted. Click Open to revise; the form re-populates your prior scores and shows an "Updating existing scores" banner.
 4. Click **Open** on a To Review venture. The assessment view loads with all six dimensions populated (Researcher Aptitude, Sector Funding, Competitive Winnability, Market Opportunity, IP Landscape, Solution Value). Score each on a 1–9 scale with rationale, then submit your final recommendation. Status flips to `Reviewed`.

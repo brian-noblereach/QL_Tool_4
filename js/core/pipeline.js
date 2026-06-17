@@ -447,9 +447,30 @@ class AnalysisPipeline {
     
     // Store short description for other APIs
     this.companyDescription = CompanyAPI.getShortDescription(response);
-    
+
+    // Insufficient-input gate -- mirror of the runner's gate (runner.ps1) for
+    // the advisor-initiated live-run path. If Venture Info could not gather
+    // enough to assess the venture, halt here so the downstream wave never
+    // starts and the advisor sees an actionable message instead of confident
+    // scores on nothing. Two signals; either trips it:
+    //   (1) explicit verdict: data_quality_assessment.sufficient_for_downstream === false
+    //       (missing verdict is treated as sufficient -- backward compatible).
+    //   (2) deterministic floor: summary below MIN_DOWNSTREAM_SUMMARY_WORDS
+    //       (kept in sync with config.limits.MinDownstreamSummaryWords).
+    const MIN_DOWNSTREAM_SUMMARY_WORDS = 120;
+    const dq = (response.full || response)?.data_quality_assessment || {};
+    const summaryWordCount = (this.companyDescription || '').split(/\s+/).filter(Boolean).length;
+    if (dq.sufficient_for_downstream === false) {
+      const reason = (dq.insufficiency_reason || '').trim()
+        || 'The submitted materials do not contain enough information to assess this venture.';
+      throw new Error(`Not enough information to analyze this venture: ${reason} Add a pitch deck, invention disclosure, or working URL and try again.`);
+    }
+    if (summaryWordCount < MIN_DOWNSTREAM_SUMMARY_WORDS) {
+      throw new Error(`Not enough information to analyze this venture: the extracted summary is too thin (${summaryWordCount} words). Add a pitch deck, invention disclosure, or working URL and try again.`);
+    }
+
     console.log('[Pipeline] Company analysis complete, short description length:', this.companyDescription?.length);
-    
+
     return response;
   }
 

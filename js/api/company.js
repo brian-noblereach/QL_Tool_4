@@ -350,6 +350,12 @@ const CompanyAPI = {
       const qualityData = profile.data_quality_and_gaps || data.data_quality || {};
       data.data_quality_assessment = {
         overall_confidence: qualityData.information_completeness === 'high' ? 'High' : 'Medium',
+        // Backward compat: legacy shape has no downstream-sufficiency verdict;
+        // default to true so the insufficient-input gate never false-positives
+        // on it. Only an explicit false from the v2+ flow halts the pipeline.
+        sufficient_for_downstream: (typeof qualityData.sufficient_for_downstream === 'boolean')
+          ? qualityData.sufficient_for_downstream : true,
+        insufficiency_reason: qualityData.insufficiency_reason || '',
         information_gaps: qualityData.information_gaps || qualityData.critical_gaps || [],
         sources_used: qualityData.sources_used || []
       };
@@ -443,6 +449,8 @@ const CompanyAPI = {
       },
       data_quality_assessment: {
         overall_confidence: 'Low',
+        sufficient_for_downstream: true,
+        insufficiency_reason: '',
         information_gaps: [],
         sources_used: []
       }

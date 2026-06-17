@@ -702,6 +702,36 @@ class AssessmentView {
     this.displayTeamEvidence(data);
   }
 
+  /**
+   * Build a "limited evidence" caveat banner for a dimension's Summary view.
+   * Warn-only: it never suppresses the score (the score still renders below the
+   * banner) -- it just tells the advisor the assessment rests on thin data.
+   * Fires when EITHER signal trips:
+   *   - the dimension self-reports data_confidence === 'Low', OR
+   *   - the caller passes thinEvidence=true (a dimension-specific zero/near-zero
+   *     evidence condition, e.g. no competitors found, no patents found).
+   * @param {string}  confidence    normalized confidence ('Low'|'Medium'|'High'|...)
+   * @param {boolean} thinEvidence  dimension-specific zero-evidence flag
+   * @param {string}  justification optional data_confidence_justification to show
+   * @returns {string} HTML, or '' when no warning is warranted
+   */
+  renderSectionConfidenceWarning(confidence, thinEvidence, justification = '') {
+    const lowConf = typeof confidence === 'string' && confidence.trim().toLowerCase() === 'low';
+    if (!lowConf && !thinEvidence) return '';
+    const detail = (justification && justification.trim())
+      ? `<div class="section-confidence-warning-detail">${this.escape(justification)}</div>`
+      : '';
+    return `
+      <div class="section-confidence-warning">
+        <span class="section-confidence-warning-icon">&#9888;</span>
+        <div>
+          <strong>Limited evidence for this dimension.</strong>
+          This assessment rests on thin data &mdash; treat the score below with caution and verify before relying on it.
+          ${detail}
+        </div>
+      </div>`;
+  }
+
   displayTeamEvidence(data) {
     const container = document.getElementById('team-evidence');
     if (!container) return;
@@ -733,6 +763,7 @@ class AssessmentView {
     // SUMMARY VIEW
     const summaryHTML = `
       <div class="evidence-content">
+        ${this.renderSectionConfidenceWarning(confidence, members.length === 0, confidenceJustification)}
         <div class="metrics-row">
           <div class="metric-card">
             <span class="metric-label">Team Size</span>
@@ -1084,8 +1115,11 @@ class AssessmentView {
     `).join('');
 
     // SUMMARY VIEW - three channels + venture-own panel
+    const fundingThin = activityLevel === 'none_found'
+      || (sectorVcDeals.length === 0 && sectorGrants.length === 0 && pipelineOpportunities.length === 0);
     const summaryHTML = `
       <div class="evidence-content">
+        ${this.renderSectionConfidenceWarning('', fundingThin, dataGaps)}
         ${primarySector ? `<p class="industry-context"><strong>Sector Assessed:</strong> ${this.escape(primarySector)}${broaderSector ? ` (${this.escape(broaderSector)})` : ''}</p>` : ''}
 
         <div class="metrics-row">
@@ -1811,6 +1845,7 @@ class AssessmentView {
     // SUMMARY VIEW
     const summaryHTML = `
       <div class="evidence-content">
+        ${this.renderSectionConfidenceWarning(confidence, competitors.length === 0, confidenceJustification)}
         ${jobToBeDone ? `<p class="industry-context"><strong>Job to Be Done:</strong> ${this.escape(jobToBeDone)}</p>` : ''}
 
         <div class="metrics-row">
@@ -2149,6 +2184,7 @@ class AssessmentView {
     // SUMMARY VIEW
     const summaryHTML = `
       <div class="evidence-content">
+        ${this.renderSectionConfidenceWarning(confidence, markets.length === 0, confidenceJustification)}
         <div class="metrics-row">
           <div class="metric-card">
             <span class="metric-label">TAM</span>
@@ -2416,6 +2452,7 @@ class AssessmentView {
     // SUMMARY VIEW
     const summaryHTML = `
       <div class="evidence-content">
+        ${this.renderSectionConfidenceWarning(confidence, companyPatentsFound === 0 && totalRelevantPatents === 0, confidenceJustification)}
         <div class="metrics-row">
           <div class="metric-card">
             <span class="metric-label">Overall Risk</span>
