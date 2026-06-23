@@ -94,8 +94,10 @@ This is what lives in the public repo:
     │   └── pipeline.js                ← Live Stack AI orchestrator (used by "Run new analysis" modal)
     ├── components/
     │   ├── assessment-view.js         ← Tab-based assessment rendering + scoring
-    │   ├── associate-view.js          ← Queue Management UI for Associates
+    │   ├── assessment-loader.js       ← Shared "render a queue row's evidence into the assessment view" core (used by My Queue + External views)
+    │   ├── associate-view.js          ← Queue Management UI for Associates (+ admin-only external share-tag picker)
     │   ├── advisor-queue-view.js      ← "My Queue" view for Advisors
+    │   ├── external-view.js           ← Read-only "Shared Analyses" view for university partners (e.g. Georgetown)
     │   ├── summary-view.js
     │   ├── tab-manager.js
     │   ├── toast-manager.js
@@ -151,7 +153,18 @@ Advisors can click **+ Run new analysis** at the top of My Queue to trigger a v0
 
 ### As Admin
 
-The `admin` password unlocks both views. A sidebar role switcher lets you flip between Associate and Advisor without re-logging in.
+The `admin` password unlocks both views. A sidebar role switcher lets you flip between Associate and Advisor without re-logging in. Admin is also the only role that sees the **Share externally with** picker on the Queue Management form — use it to tag a venture for a university partner (see below).
+
+### As a university partner (read-only)
+
+A university partner (e.g. Georgetown) gets a **custom password** that lands them on a read-only **Shared Analyses** view. They see only the ventures you pre-loaded and tagged for them whose analysis is complete (`Ready` or `Reviewed`) — nothing else in the queue, and no other university's ventures. They can open each assessment and read the full AI analysis, and may move the scoring sliders / type justifications / set a verdict to record their own opinion, but **none of that is saved or shared** — it stays on their device, and they can export a PDF. They cannot run analyses or reach any management screen.
+
+To give a partner access (admin/maintainer):
+1. Add an entry to `EXTERNAL_ACCESS` in the proxy (`{ key, propKey, scope, label, expiresAt }`), with an optional `expiresAt` cutoff date.
+2. In the GAS editor, run `setExternalUniversityPassword('EXTERNAL_PW_<NAME>', '<their password>')` (this does **not** log out staff sessions).
+3. When you queue each of their ventures in Queue Management, set **Share externally with** to that partner.
+
+To end access, delete or rotate their password (`deleteExternalUniversityPassword(...)`) or set their `expiresAt` to a past date — access lapses on their next request.
 
 ---
 
@@ -159,9 +172,9 @@ The `admin` password unlocks both views. A sidebar role switcher lets you flip b
 
 This repo is open for transparency and for forks that want to adapt the frontend to their own venture-evaluation pipeline. The frontend is just a static site, but it depends on three backend pieces that you'd need to provide yourself:
 
-1. **A Google Apps Script Web App** that proxies Smartsheet and Stack AI calls. It must implement the JSONP / iframe action protocol the frontend uses (`auth`, `verify`, `config`, `queue_*`, `smartsheet*`, `upload_file`, `clear_files`). The maintainer's version is roughly 950 lines; the contract is documented in CLAUDE.md.
+1. **A Google Apps Script Web App** that proxies Smartsheet and Stack AI calls. It must implement the JSONP / iframe action protocol the frontend uses (`auth`, `verify`, `config`, `queue_*`, `queue_*_external`, `smartsheet*`, `upload_file`, `clear_files`). The maintainer's version is roughly 1,000 lines; the contract is documented in CLAUDE.md.
 2. **A PowerShell runner (or equivalent)** on a machine that has access to your file store. Polls Smartsheet for `Queued` rows, calls Stack AI, attaches the resulting JSON. The maintainer's runner uses Windows Task Scheduler under a user account (no admin rights required); see `runner-vm/README.md` in the maintainer's tree for installation.
-3. **Two Smartsheet sheets** — a queue sheet (21 columns, schema in the maintainer's `docs/smartsheet-queue-template.csv`) and a scores sheet (inherited from v03's design).
+3. **Two Smartsheet sheets** — a queue sheet (22 columns, schema in the maintainer's `docs/smartsheet-queue-template.csv`) and a scores sheet (inherited from v03's design).
 
 The frontend talks to the proxy through three hard-coded URLs in `js/core/auth.js`, `js/utils/smartsheet.js`, and `js/api/stack-proxy-v2.js`. Update all three to point at your own deployment.
 

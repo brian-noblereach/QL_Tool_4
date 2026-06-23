@@ -102,13 +102,8 @@
     <!-- v04 Advisor "My Queue" view (rendered by advisor-queue-view.js) -->
     <section id="advisor-queue-view" class="v04-pane v04-hidden"></section>
 
-    <!-- v04 External-role placeholder (deferred until external path is built) -->
-    <section id="external-view" class="v04-pane v04-hidden">
-      <div class="v04-empty-state">
-        <h2>External access</h2>
-        <p>The external advisor view is not part of the v04 PoC. Use the v03 tool for external scoring sessions.</p>
-      </div>
-    </section>
+    <!-- v04 External (university) read-only view (rendered by external-view.js) -->
+    <section id="external-view" class="v04-pane v04-hidden"></section>
 
     <!-- v04 state bridge — three hidden inputs that the v03-era scoring-submit
          path (SmartsheetIntegration) still reads to assemble its row context.
@@ -865,8 +860,12 @@
   <script src="js/components/modal-manager.js"></script>
   <script src="js/components/assessment-view.js"></script>
   <script src="js/components/summary-view.js"></script>
+  <!-- Shared "render a queue row's evidence into the assessment view" loader.
+       Must load before advisor-queue-view.js and external-view.js (both call it). -->
+  <script src="js/components/assessment-loader.js"></script>
   <script src="js/components/associate-view.js"></script>
   <script src="js/components/advisor-queue-view.js"></script>
+  <script src="js/components/external-view.js"></script>
   <!-- v03's progress-view.js removed in v04 — the live-pipeline overlay
        (#v04-pipeline-progress) is rendered inline by advisor-queue-view. -->
 

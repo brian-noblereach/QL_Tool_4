@@ -829,225 +829,10 @@ const AdvisorQueueView = {
     // wait, not just the network fetch portion.
     setTimeout(dismissOverlay, 0);
 
-    // Hydrate v03's state-manager with the assessment so the existing assessment-view
-    // renders. The shape is what the runner composed: { company, team, funding, ... }
-    // mapped onto state.assessment for v03 compatibility.
-    const state = window.app?.stateManager;
-    if (state && typeof state.restoreAssessment === 'function') {
-      // restoreAssessment(cacheKey | {company, team, funding, ...})
-      state.restoreAssessment(ev.assessment);
-    } else if (state) {
-      // Fallback: write into the state object directly
-      state.state = state.state || {};
-      state.state.assessment = ev.assessment;
-      state.state.ventureName  = row.VentureName;
-      state.state.advisorName  = row.AdvisorName;
-      state.state.portfolio    = row.Portfolio;
-      state.state.institution  = row.Institution;
-      state.state.technologyDescription = row.TechnologyDescription;
-      state.state.technologyDomain      = row.TechnologyDomain;
-    }
-
-    // Reveal the v03 assessment view section, hide the queue list. The results
-    // section has BOTH `hidden` (v03's hide class) and `v04-hidden` on it at
-    // page load — remove both, or it stays invisible.
+    // Hide the queue list; the shared loader reveals the assessment view and renders
+    // the evidence into it (the same path the external read-only view uses).
     document.getElementById('advisor-queue-view').classList.add('v04-hidden');
-    const av = document.getElementById('results-section');
-    if (av) { av.classList.remove('v04-hidden'); av.classList.remove('hidden'); }
-
-    // Reset everything from the previously-opened venture so nothing bleeds
-    // through. clearVentureDecisions wipes the verdict/track/pathway/dual-use/
-    // ecosystem-notes/institution/tech-desc/tech-domain state-manager fields;
-    // view.reset() wipes per-dimension scores; we also poke the DOM so the
-    // radios/checkboxes/textareas visually clear (the SummaryView's listeners
-    // were attached once at init and only re-render on state-manager *change*,
-    // not on a fresh load).
-    const smReset = window.app?.stateManager;
-    try { smReset?.clearVentureDecisions?.(); } catch (e) { Debug.warn('[v04] clearVentureDecisions failed:', e); }
-    try { smReset?.saveFinalRecommendation?.(''); } catch (e) { Debug.warn('[v04] saveFinalRecommendation reset failed:', e); }
-    try { window.assessmentView?.reset?.(); } catch (e) { Debug.warn('[v04] assessmentView.reset failed:', e); }
-    document.querySelectorAll('input[name="venture-verdict"], input[name="venture-track"], input[name="venture-pathway"]').forEach(r => { r.checked = false; });
-    const dualUseCb = document.getElementById('venture-dual-use');
-    if (dualUseCb) dualUseCb.checked = false;
-    ['venture-institution', 'venture-tech-description', 'venture-tech-domain', 'venture-ecosystem-notes', 'final-recommendation-text']
-      .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
-    const exportBtn = document.getElementById('export-btn');
-    if (exportBtn) exportBtn.disabled = true;
-    // Also clear the v03 "previously submitted" treatment on the per-dimension cards
-    ['team', 'funding', 'competitive', 'market', 'iprisk', 'solutionvalue'].forEach(dim => {
-      const card = document.getElementById(`${dim}-scoring-card`);
-      if (card) card.classList.remove('has-submission');
-      const btn = document.getElementById(`${dim}-submit-btn`);
-      if (btn) { btn.classList.remove('update-mode'); btn.textContent = 'Submit Assessment'; }
-    });
-
-    // Update the venture-name header from the queue row (in v03 the pipeline did
-    // this as data arrived; v04 has no pipeline so we do it ourselves).
-    const nameEl = document.getElementById('venture-name-text');
-    if (nameEl) nameEl.textContent = row.VentureName || '(unnamed opportunity)';
-
-    // Bridge queue-row fields into the v03 inputs/state the submit path reads.
-    // SmartsheetIntegration.getAdvisorName() looks at #sca-name and localStorage.scaName;
-    // getPortfolio() reads #portfolio. Venture-level fields (institution, tech desc,
-    // tech domain) populate their respective inputs so the v03 SummaryView shows them
-    // and the v03 submit path picks them up via state-manager.
-    const sm = window.app?.stateManager;
-    const setInput = (id, val) => {
-      const el = document.getElementById(id);
-      if (el && val != null && val !== '') el.value = val;
-    };
-    if (row.AdvisorName) {
-      setInput('sca-name', row.AdvisorName);
-      try { localStorage.setItem('scaName', row.AdvisorName); } catch (e) { Debug.warn('[v04] scaName persist failed:', e); }
-    }
-    setInput('portfolio', row.Portfolio);
-    setInput('venture-institution',      row.Institution);
-    setInput('venture-tech-description', row.TechnologyDescription);
-    setInput('venture-tech-domain',      row.TechnologyDomain);
-    if (sm) {
-      try {
-        sm.saveInstitution?.(row.Institution || '');
-        sm.saveTechnologyDescription?.(row.TechnologyDescription || '');
-        sm.saveTechnologyDomain?.(row.TechnologyDomain || '');
-      } catch (e) { console.warn('[v04] state-manager venture-field save failed:', e); }
-    }
-
-    // The runner stores raw Stack AI outputs per phase ({outputs: {'out-0', 'out-1'}}).
-    // v03's per-API processResponse() transforms those into the { score, formatted, ... }
-    // envelope assessment-view's loadXxxData methods expect. Run it here, then load.
-    // (company is special: runner stores it as the company JSON directly, not wrapped.)
-    console.log('[v04] openAssessment evidence keys:', Object.keys(ev.assessment || {}));
-    const view = window.assessmentView;
-    const a = ev.assessment;
-    if (view && a) {
-      const apiAvailable = !!(window.TeamAPI && window.TeamAPI.processResponse);
-      console.log('[v04] API modules loaded:', apiAvailable, {
-        TeamAPI: !!window.TeamAPI, FundingAPI: !!window.FundingAPI,
-        CompetitiveAPI: !!window.CompetitiveAPI, MarketAPI: !!window.MarketAPI,
-        IPRiskAPI: !!window.IPRiskAPI
-      });
-
-      const shape = (label, api, raw) => {
-        if (!raw) { console.warn(`[v04] ${label}: no data`); return null; }
-        const hasOutputs = !!raw.outputs;
-        const hasProcess = !!(api && typeof api.processResponse === 'function');
-        console.log(`[v04] ${label}: hasOutputs=${hasOutputs} hasProcess=${hasProcess} rawKeys=`, Object.keys(raw).slice(0, 8));
-        if (hasOutputs && hasProcess) {
-          try {
-            const shaped = api.processResponse(raw);
-            console.log(`[v04] ${label} shaped, score=${shaped?.score}`);
-            return shaped;
-          } catch (e) {
-            console.error(`[v04] ${label} processResponse failed:`, e);
-            return null;
-          }
-        }
-        // No outputs wrapper or no API — pass through (may be incomplete display).
-        return raw;
-      };
-
-      const tm = window.app?.tabManager;
-      const enable = (tabId) => { try { tm?.enableTab(tabId); } catch (e) { Debug.warn('[v04] enableTab failed:', tabId, e); } };
-
-      if (a.company) {
-        try { view.loadCompanyData(a.company); enable('overview'); console.log('[v04] company loaded'); }
-        catch (e) { console.error('[v04] loadCompanyData failed:', e); }
-        // v04.2.1: Auto-detect institution + tech-description + tech-domain
-        // from the AI-extracted company data, mirroring the live-run path
-        // (advisor-queue-view phaseComplete handler for 'company'). The
-        // runner does NOT run these JS-side extractors, so without this the
-        // venture-decisions section stays blank on opened-from-queue
-        // ventures unless the Associate pre-filled them. Only fills when
-        // the queue-row value is empty — never overwrites an explicit value.
-        if (window.VentureExtractors && sm) {
-          try {
-            const ventureUrl = row.VentureURL || '';
-            if (!row.Institution) {
-              const det = window.VentureExtractors.detectInstitution?.(ventureUrl, a.company, []);
-              if (det) {
-                sm.saveInstitution(det);
-                setInput('venture-institution', det);
-                console.log('[v04] auto-filled Institution from AI:', det);
-              }
-            }
-            if (!row.TechnologyDescription) {
-              const desc = window.VentureExtractors.deriveTechnologyDescription?.(a.company);
-              if (desc) {
-                sm.saveTechnologyDescription(desc);
-                setInput('venture-tech-description', desc);
-              }
-            }
-            if (!row.TechnologyDomain) {
-              const dom = window.VentureExtractors.extractTechnologyDomain?.(a.company);
-              if (dom) {
-                sm.saveTechnologyDomain(dom);
-                setInput('venture-tech-domain', dom);
-              }
-            }
-          } catch (e) { Debug.warn('[v04] auto-detect on openAssessment failed:', e); }
-        }
-      } else {
-        console.warn('[v04] no company in assessment');
-      }
-      const team        = shape('team',        window.TeamAPI,        a.team);
-      const funding     = shape('funding',     window.FundingAPI,     a.funding);
-      const competitive = shape('competitive', window.CompetitiveAPI, a.competitive);
-      const market      = shape('market',      window.MarketAPI,      a.market);
-      const iprisk      = shape('iprisk',      window.IPRiskAPI,      a.iprisk);
-      const literature  = shape('literature',  window.LiteratureAPI,  a.literature);
-      const synthesis   = shape('synthesis',   window.SynthesisAPI,   a.synthesis);
-      try {
-        if (team)        { view.loadTeamData(team);               enable('team'); }
-        if (funding)     { view.loadFundingData(funding);         enable('funding'); }
-        // Load synthesis + literature BEFORE competitive so the competitive
-        // section picks up the unified-competitor grid on its first render.
-        if (synthesis && typeof view.loadSynthesisData === 'function') {
-          view.loadSynthesisData(synthesis);
-        }
-        if (literature && typeof view.loadLiteratureData === 'function') {
-          view.loadLiteratureData(literature);
-        }
-        if (competitive) { view.loadCompetitiveData(competitive, literature || null, synthesis || null); enable('competitive'); }
-        if (market)      { view.loadMarketData(market);           enable('market'); }
-        if (iprisk)      { view.loadIpRiskData(iprisk);           enable('iprisk'); }
-        if (typeof view.loadSolutionValueEvidence === 'function') {
-          view.loadSolutionValueEvidence();
-          enable('solutionvalue');
-        }
-        enable('summary');
-
-        // Always land on the Overview tab when opening an assessment from the
-        // queue, regardless of which tab the advisor was last viewing on a
-        // prior venture. TabManager.activeTab is NOT reset by
-        // assessmentView.reset(), so without this explicit activation the
-        // previous venture's active tab (e.g., Competitive) stays selected and
-        // the user sees the new venture's wrong-tab content. activateTab()
-        // handles the panel-hide / panel-show transition.
-        try { tm?.activateTab('overview'); } catch (e) { Debug.warn('[v04] activateTab(overview) failed:', e); }
-
-        // Populate the summary tab (score grid + recommendation section) up
-        // front so the advisor sees the full layout — including the Submit
-        // Final Assessment button — without having to submit a per-dimension
-        // score first. Without this call, summary-content stays empty and
-        // final-recommendation-section stays hidden until submitScore fires.
-        if (window.summaryView && view.data) {
-          try {
-            window.summaryView.update({
-              company:     view.data.company,
-              team:        view.data.team,
-              funding:     view.data.funding,
-              competitive: view.data.competitive,
-              market:      view.data.market,
-              iprisk:      view.data.iprisk
-            });
-          } catch (e) { Debug.warn('[v04] summaryView.update failed:', e); }
-        }
-      } catch (e) {
-        console.error('[v04] loadXxxData failed:', e);
-      }
-    } else {
-      console.error('[v04] missing view or assessment', { view: !!view, assessment: !!a });
-    }
+    window.AssessmentLoader.loadEvidenceIntoView(ev.assessment, row);
 
     // Save a hook so the existing scoring submission path can mark this row Reviewed.
     window.__v04_currentQueueRowId = rowId;
@@ -1083,8 +868,9 @@ const AdvisorQueueView = {
     // reflects already-submitted dimensions, the next-steps checklist crosses
     // off what's done, and `showRecommendationSection` flips Submit Final
     // Assessment to enabled (allScoresSubmitted now sees view.userScores[*]
-    // .submitted === true). The earlier update() call rendered the grid
+    // .submitted === true). The loader's initial update() rendered the grid
     // before priors loaded — accurate then, stale now.
+    const view = window.assessmentView;
     if (window.summaryView && view?.data) {
       try {
         window.summaryView.update({
@@ -1319,7 +1105,14 @@ window.AdvisorQueueView = AdvisorQueueView;
 document.addEventListener('click', (e) => {
   if (e.target.closest && e.target.closest('.v04-back-to-queue')) {
     e.preventDefault();
-    AdvisorQueueView.backToQueue();
+    // The results-section back button is shared. External (university) users
+    // arrived from the read-only ExternalView, not My Queue, so route them back
+    // there instead of revealing the (empty) advisor queue pane.
+    if (window.Auth && Auth.isExternal && Auth.isExternal() && window.ExternalView) {
+      window.ExternalView.backToList();
+    } else {
+      AdvisorQueueView.backToQueue();
+    }
   }
 });
 
@@ -1330,6 +1123,11 @@ document.addEventListener('click', (e) => {
   if (!orig) return;
   window.SmartsheetIntegration.submitAllScores = async function (...args) {
     const result = await orig.apply(window.SmartsheetIntegration, args);
+    // External (university) users score locally only — never flip a queue row.
+    // They never reach submitAllScores and never set __v04_currentQueueRowId, and
+    // queue_update is gated against the external role server-side; this is the
+    // cheap belt-and-suspenders so the path is unreachable for them.
+    if (window.Auth && Auth.isExternal && Auth.isExternal()) return result;
     try {
       if (result?.success && window.__v04_currentQueueRowId) {
         const rowId = window.__v04_currentQueueRowId;

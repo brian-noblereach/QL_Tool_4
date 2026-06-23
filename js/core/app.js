@@ -192,7 +192,7 @@ class App {
 
   async _routeByRole() {
     // Hide all view sections first
-    const ids = ['associate-view', 'advisor-queue-view', 'results-section'];
+    const ids = ['associate-view', 'advisor-queue-view', 'external-view', 'results-section'];
     ids.forEach(id => { const el = document.getElementById(id); if (el) el.classList.add('v04-hidden'); });
 
     const active = Auth.activeRole;
@@ -215,9 +215,15 @@ class App {
         await AdvisorQueueView.refresh();
       }
     } else if (active === 'external') {
-      // External flow deferred — display a stub message
+      // Read-only university partner view (scope-locked server-side).
       const el = document.getElementById('external-view');
       if (el) el.classList.remove('v04-hidden');
+      if (!this._externalInited) {
+        await ExternalView.init();
+        this._externalInited = true;
+      } else {
+        await ExternalView.refresh();
+      }
     }
   }
 }

@@ -1,27 +1,40 @@
 // js/core/auth.js — v04 access control with multi-role support.
 //
-// The v04 proxy returns { role, roles[] } where:
+// The v04 proxy returns { role, roles[], scope, label } where:
 //   internal  → roles=['internal']
-//   external  → roles=['external']        (deferred in PoC, but supported in the wire format)
+//   external  → roles=['external']        (read-only university lane; scope+label set)
 //   associate → roles=['associate']
 //   admin     → roles=['associate','internal','admin']
 //
 // Admin users get a sidebar role-switcher; everyone else lands on their single role's view.
+// For external logins, `scope` (the university tag) is carried in the token and enforced
+// server-side; `label` (e.g. "Georgetown") is shown in the external view header.
 
 const Auth = {
   STORAGE_TOKEN:  'noblereach_v04_token',
   STORAGE_ROLES:  'noblereach_v04_roles',
   STORAGE_ACTIVE: 'noblereach_v04_active_role',
+  // External (university) access scope + display label. Set only for external
+  // logins; null/absent for every other role. Scope is enforced server-side via
+  // the token — these are kept only so the external view can show "Georgetown".
+  STORAGE_SCOPE:  'noblereach_v04_scope',
+  STORAGE_LABEL:  'noblereach_v04_label',
 
   // Proxy URL is centralized in js/core/config.js — update there on redeploy.
   get proxyUrl() { return window.AppConfig.proxyUrl; },
 
   roles: [],
   activeRole: null,
+  scope: null,
 
   // Current access token (or null). The SPA's proxy callers read this and pass
   // it as `data.token` so the proxy's role gate can verify the request.
   get token() { return localStorage.getItem(this.STORAGE_TOKEN); },
+
+  // Display label for an external partner (e.g. "Georgetown"); '' for others.
+  get scopeLabel() {
+    return localStorage.getItem(this.STORAGE_LABEL) || this.scope || '';
+  },
 
   async checkAccess() {
     const token = localStorage.getItem(this.STORAGE_TOKEN);
@@ -31,6 +44,7 @@ const Auth = {
       if (verify.valid) {
         this.roles = verify.roles || (verify.role ? [verify.role] : []);
         localStorage.setItem(this.STORAGE_ROLES, JSON.stringify(this.roles));
+        this._setScope(verify.scope, verify.label);
         const stored = localStorage.getItem(this.STORAGE_ACTIVE);
         this.activeRole = stored && this.roles.indexOf(stored) !== -1 ? stored : this.defaultActiveRole();
         if (this.activeRole) localStorage.setItem(this.STORAGE_ACTIVE, this.activeRole);
@@ -42,6 +56,7 @@ const Auth = {
       const cached = localStorage.getItem(this.STORAGE_ROLES);
       if (cached) {
         try { this.roles = JSON.parse(cached); } catch (_) { this.roles = []; }
+        this.scope = localStorage.getItem(this.STORAGE_SCOPE) || null;
         this.activeRole = localStorage.getItem(this.STORAGE_ACTIVE) || this.defaultActiveRole();
       }
       return this.roles.length > 0;
@@ -69,6 +84,7 @@ const Auth = {
         localStorage.setItem(this.STORAGE_TOKEN, data.token);
         this.roles = data.roles || (data.role ? [data.role] : []);
         localStorage.setItem(this.STORAGE_ROLES, JSON.stringify(this.roles));
+        this._setScope(data.scope, data.label);
         this.activeRole = this.defaultActiveRole();
         if (this.activeRole) localStorage.setItem(this.STORAGE_ACTIVE, this.activeRole);
         return { success: true };
@@ -94,8 +110,20 @@ const Auth = {
     localStorage.removeItem(this.STORAGE_TOKEN);
     localStorage.removeItem(this.STORAGE_ROLES);
     localStorage.removeItem(this.STORAGE_ACTIVE);
+    localStorage.removeItem(this.STORAGE_SCOPE);
+    localStorage.removeItem(this.STORAGE_LABEL);
     this.roles = [];
     this.activeRole = null;
+    this.scope = null;
+  },
+
+  // Persist (or clear) the external scope + label after login/verify.
+  _setScope(scope, label) {
+    this.scope = scope || null;
+    if (scope) localStorage.setItem(this.STORAGE_SCOPE, scope);
+    else localStorage.removeItem(this.STORAGE_SCOPE);
+    if (label) localStorage.setItem(this.STORAGE_LABEL, label);
+    else localStorage.removeItem(this.STORAGE_LABEL);
   },
 
   hasRole(name)  { return this.roles.indexOf(name) !== -1; },

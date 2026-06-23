@@ -741,6 +741,20 @@ const QueueClient = {
     return await this._jsonp({ data: JSON.stringify(data) });
   },
 
+  // -- External (university) read-only lane --------------------------------
+  // These call the scope-locked proxy actions. The scope is carried in the
+  // external token (auto-injected by _wrapData) and enforced server-side — no
+  // client param controls which university's ventures are returned.
+  async listExternal() {
+    const data = this._wrapData('queue_list_external', {});
+    return await this._jsonp({ data: JSON.stringify(data) });
+  },
+
+  async getEvidenceExternal(rowId) {
+    const data = this._wrapData('queue_get_evidence_external', { rowId });
+    return await this._jsonp({ data: JSON.stringify(data) });
+  },
+
   // -- Writes (iframe path; reuses SmartsheetIntegration's helper) --------
   async create(fields) {
     const payload = Object.assign({ action: 'queue_create' }, fields);

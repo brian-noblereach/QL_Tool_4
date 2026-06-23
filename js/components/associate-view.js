@@ -52,6 +52,19 @@ const AssociateView = {
     const portfolios = (cfg.portfolios || []).map(p => p.value || p);
     const advisors   = cfg.advisors   || [];
     const associates = cfg.associates || [];
+    // Admin-only: tag a venture for read-only external (university) access.
+    // Associates never see this control. Options come from the proxy config
+    // (scope/label only — no secrets) and match EXTERNAL_ACCESS exactly.
+    const shareTags = cfg.externalShareTags || [];
+    const isAdmin   = !!(window.Auth && Auth.isAdmin && Auth.isAdmin());
+    const shareTagField = (isAdmin && shareTags.length) ? `
+              <label>Share externally with
+                <select name="ExternalShareTag">
+                  <option value="">-- none --</option>
+                  ${shareTags.map(t => `<option value="${this._esc(t.value)}">${this._esc(t.label)}</option>`).join('')}
+                </select>
+                <span class="v04-hint">Admin only. Grants this university partner read-only access to this venture once its analysis is Ready.</span>
+              </label>` : '';
 
     this._root.innerHTML = `
       <div class="v04-associate-pane">
@@ -94,6 +107,7 @@ https://nrf.sharepoint.us/sites/.../queue-inputs/invention-disclosure.pdf"></tex
               </label>
               <label>Institution<input name="Institution" placeholder="optional — AI will fill"></label>
               <label>Tech Domain<input name="TechnologyDomain" placeholder="optional — AI will fill"></label>
+              ${shareTagField}
               <label class="v04-span-2">Contacts<input name="Contacts" placeholder="optional — founders/PIs/emails"></label>
               <label class="v04-span-2">Pre-load Notes<textarea name="PreloadNotes" rows="2" placeholder="optional context for the advisor"></textarea></label>
             </div>
