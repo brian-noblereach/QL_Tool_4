@@ -157,7 +157,7 @@ The `admin` password unlocks both views. A sidebar role switcher lets you flip b
 
 ### As a university partner (read-only)
 
-A university partner (e.g. Georgetown) gets a **custom password** that lands them on a read-only **Shared Analyses** view. They see only the ventures you pre-loaded and tagged for them whose analysis is complete (`Ready` or `Reviewed`) — nothing else in the queue, and no other university's ventures. They can open each assessment and read the full AI analysis, and may move the scoring sliders / type justifications / set a verdict to record their own opinion, but **none of that is saved or shared** — it stays on their device, and they can export a PDF. They cannot run analyses or reach any management screen.
+A university partner (e.g. Georgetown) gets a **custom password** that lands them on a read-only **Shared Analyses** view. They see only the ventures you pre-loaded and tagged for them whose analysis is complete (`Ready` or `Reviewed`) — nothing else in the queue, and no other university's ventures. They can open each assessment and read the full AI analysis, and may move the scoring sliders / type justifications / set a verdict to record their own opinion. **Nothing they enter is ever sent to NobleReach or saved to the shared system** — it's kept only in their own browser (so they can review a venture across multiple sittings and pick up where they left off), and they can export a PDF. They cannot run analyses or reach any management screen.
 
 To give a partner access (admin/maintainer):
 1. Add an entry to `EXTERNAL_ACCESS` in the proxy (`{ key, propKey, scope, label, expiresAt }`), with an optional `expiresAt` cutoff date.

@@ -22,6 +22,7 @@ const ExternalView = {
     this._render();
     await this.refresh();
     this._wireEvents();
+    this._wireScorePersistence();
   },
 
   _render() {
@@ -101,6 +102,9 @@ const ExternalView = {
 
   async openAssessment(rowId) {
     this.state.activeRowId = rowId;
+    // Kill any pending save from the previously-open venture so it can't fire
+    // mid-load and clobber this venture's stored snapshot.
+    if (this._snapshotTimer) { clearTimeout(this._snapshotTimer); this._snapshotTimer = null; }
     const row = this.state.rows.find(r => String(r.id) === String(rowId));
     if (!row) { alert('Venture not found'); return; }
 
@@ -140,6 +144,11 @@ const ExternalView = {
     // Read-only chrome adjustments (relabel Back, hide the rename pencil).
     this._applyExternalChrome();
 
+    // Restore any scores/justifications/verdict this reviewer previously entered
+    // for THIS venture on this device (the loader just reset the view). Must run
+    // after the loader's initial render so it re-applies on top.
+    this._restoreExternalScores(rowId);
+
     // Let external users export the AI analysis as a PDF without first entering
     // a recommendation (the loader disables the button during reset).
     const exportBtn = document.getElementById('export-btn');
@@ -147,7 +156,7 @@ const ExternalView = {
   },
 
   // The results-section markup is shared with the advisor flow. For external we
-  // repoint its Back buttons at this list and remove the rename affordance.
+  // repoint its Back buttons at this list and remove staff-only affordances.
   _applyExternalChrome() {
     document.querySelectorAll('.v04-back-to-queue').forEach(btn => {
       const svg = btn.querySelector('svg');
@@ -160,6 +169,10 @@ const ExternalView = {
     if (pencil) pencil.classList.add('v04-hidden');
     const hint = document.querySelector('.venture-name-hint');
     if (hint) hint.classList.add('v04-hidden');
+    // The Database Sync section (check-status / force-sync) only makes sense for
+    // staff who write to Smartsheet. External scoring is local-only, so hide it.
+    const sync = document.getElementById('database-sync-section');
+    if (sync) sync.classList.add('v04-hidden');
   },
 
   // Invoked by the shared .v04-back-to-queue delegated handler when the active
@@ -169,6 +182,124 @@ const ExternalView = {
     if (av) { av.classList.add('v04-hidden'); av.classList.add('hidden'); }
     if (this._root) this._root.classList.remove('v04-hidden');
     this.refresh();
+  },
+
+  // ---- Local-only score persistence (per venture, this device) -------------
+  // External scores never touch Smartsheet. We keep them in localStorage keyed
+  // by rowId so a reviewer can score across multiple sittings / reloads and not
+  // lose work. A single delegated, debounced listener snapshots the whole
+  // scoring surface on any interaction; _restoreExternalScores re-applies it.
+
+  DIMENSIONS: ['team', 'funding', 'competitive', 'market', 'iprisk', 'solutionvalue'],
+
+  _extKey(rowId) { return 'noblereach_v04_ext_scores_' + rowId; },
+
+  _wireScorePersistence() {
+    if (this._scoreSaveWired) return;
+    const rs = document.getElementById('results-section');
+    if (!rs) return;
+    const schedule = () => {
+      if (this._snapshotTimer) clearTimeout(this._snapshotTimer);
+      this._snapshotTimer = setTimeout(() => {
+        this._snapshotTimer = null;
+        this._snapshotExternalScores();
+      }, 400);
+    };
+    // input: sliders + textareas; change: radios/checkbox; click: catches the
+    // per-dimension "Submit/Update" button so the submitted flag is captured.
+    ['input', 'change', 'click'].forEach(ev => rs.addEventListener(ev, schedule));
+    this._scoreSaveWired = true;
+  },
+
+  _snapshotExternalScores() {
+    // Only an external session writes these, and only for the open venture.
+    if (!(window.Auth && Auth.isExternal && Auth.isExternal())) return;
+    const rowId = this.state.activeRowId;
+    const view = window.assessmentView;
+    if (!rowId || !view || !view.userScores) return;
+
+    const val   = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+    const radio = (name) => { const el = document.querySelector(`input[name="${name}"]:checked`); return el ? el.value : ''; };
+
+    const snap = { userScores: {}, decisions: {
+      verdict:        radio('venture-verdict'),
+      track:          radio('venture-track'),
+      pathway:        radio('venture-pathway'),
+      dualUse:        !!(document.getElementById('venture-dual-use') || {}).checked,
+      ecosystemNotes: val('venture-ecosystem-notes'),
+      recommendation: val('final-recommendation-text')
+    }};
+    this.DIMENSIONS.forEach(dim => {
+      const us = view.userScores[dim];
+      if (us && (us.score != null || us.justification)) {
+        snap.userScores[dim] = { score: us.score, justification: us.justification || '', submitted: !!us.submitted };
+      }
+    });
+
+    // Skip writing an entirely-empty snapshot (e.g. a stray click before any
+    // input) so we never overwrite real saved work with nothing.
+    const hasAny = Object.keys(snap.userScores).length ||
+      Object.values(snap.decisions).some(v => v && v !== false);
+    try {
+      if (hasAny) localStorage.setItem(this._extKey(rowId), JSON.stringify(snap));
+    } catch (e) { Debug.warn('[ExternalView] score snapshot save failed:', e); }
+  },
+
+  _restoreExternalScores(rowId) {
+    let snap = null;
+    try { snap = JSON.parse(localStorage.getItem(this._extKey(rowId)) || 'null'); }
+    catch (e) { snap = null; }
+    if (!snap) return;
+    const view = window.assessmentView;
+    if (!view) return;
+
+    Object.keys(snap.userScores || {}).forEach(dim => {
+      const s = snap.userScores[dim];
+      if (!s) return;
+      if (typeof view.setUserScore === 'function') {
+        view.setUserScore(dim, { score: s.score, justification: s.justification });
+      }
+      if (s.submitted && s.score != null && view.userScores && view.userScores[dim]) {
+        view.userScores[dim].submitted = true;
+        view.userScores[dim].timesSubmitted = view.userScores[dim].timesSubmitted || 1;
+        const btn = document.getElementById(`${dim}-submit-btn`);
+        if (btn) {
+          btn.classList.add('update-mode');
+          btn.innerHTML = `
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Update Score`;
+        }
+        const card = document.getElementById(`${dim}-scoring-card`);
+        if (card) card.classList.add('has-submission');
+      }
+    });
+
+    const d = snap.decisions || {};
+    const setRadio = (name, v) => { if (v) { const el = document.querySelector(`input[name="${name}"][value="${v}"]`); if (el) el.checked = true; } };
+    setRadio('venture-verdict', d.verdict);
+    setRadio('venture-track', d.track);
+    setRadio('venture-pathway', d.pathway);
+    const du = document.getElementById('venture-dual-use'); if (du) du.checked = !!d.dualUse;
+    const en = document.getElementById('venture-ecosystem-notes'); if (en && d.ecosystemNotes) en.value = d.ecosystemNotes;
+    const rec = document.getElementById('final-recommendation-text'); if (rec && d.recommendation) rec.value = d.recommendation;
+
+    // Re-render the summary so the score grid + recommendation section reflect
+    // the restored state (mirrors the advisor post-priors re-render).
+    if (window.summaryView && view.data) {
+      try {
+        window.summaryView.update({
+          company:     view.data.company,
+          team:        view.data.team,
+          funding:     view.data.funding,
+          competitive: view.data.competitive,
+          market:      view.data.market,
+          iprisk:      view.data.iprisk
+        });
+      } catch (e) { Debug.warn('[ExternalView] summary update after restore failed:', e); }
+    }
   },
 
   _esc(s) { return window.escapeHtml(s); }
