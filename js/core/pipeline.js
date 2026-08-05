@@ -57,7 +57,7 @@ class AnalysisPipeline {
       {
         name: 'IP Landscape',
         key: 'iprisk',
-        duration: 240,  // v04.8: +3 Dimensions recall legs and up to 24 (was 20) claim-charted patents
+        duration: 260,  // v04.8: +3 Dimensions recall legs and up to 28 (was 20) claim-charted patents
         status: 'pending',
         startTime: null,
         endTime: null,

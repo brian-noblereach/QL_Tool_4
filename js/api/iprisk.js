@@ -243,6 +243,9 @@ const IPRiskAPI = {
     }
     if (typeof recall.unique_pool_size !== 'number') recall.unique_pool_size = 0;
     if (!Array.isArray(recall.legs_with_errors)) recall.legs_with_errors = [];
+    if (typeof recall.genus_patents_dropped_unreviewed !== 'number') {
+      recall.genus_patents_dropped_unreviewed = 0;
+    }
 
     // Top relevant patents
     if (!Array.isArray(report.top_relevant_patents)) report.top_relevant_patents = [];
@@ -423,7 +426,8 @@ const IPRiskAPI = {
         explanation: recall.recall_explanation || '',
         absenceIsInformative: recall.searched_but_not_found_is_informative !== false,
         uniquePoolSize: recall.unique_pool_size ?? 0,
-        legsWithErrors: Array.isArray(recall.legs_with_errors) ? recall.legs_with_errors : []
+        legsWithErrors: Array.isArray(recall.legs_with_errors) ? recall.legs_with_errors : [],
+        genusDroppedUnreviewed: recall.genus_patents_dropped_unreviewed ?? 0
       },
       analysisGeneratedAt: report.analysis_generated_at || '',
 

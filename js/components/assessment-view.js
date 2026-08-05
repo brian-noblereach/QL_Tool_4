@@ -2480,15 +2480,22 @@ class AssessmentView {
     // data_confidence to Low -- so rendering both stacks two warnings on one
     // run. The recall caveat is strictly more specific and carries the richer
     // explanation, so it takes precedence and suppresses the generic one.
+    // Two independent triggers, so the copy has to cover both: retrieval that
+    // could not reach the space, and retrieval that reached it but left broad
+    // genus patents unreviewed. Either way the advisor's takeaway is identical --
+    // "no blocker found" is not a clean result -- so the headline speaks to
+    // coverage generally and the detail lines say which applied.
+    const genusDropped = recall.genusDroppedUnreviewed || 0;
     const recallCaveatHTML = recallCaveat ? `
       <div class="section-confidence-warning">
         <span class="section-confidence-warning-icon">&#9888;</span>
         <div>
-          <strong>Patent search coverage was incomplete &mdash; absence of a blocker is not a clear result.</strong>
-          This assessment could not search the full space where a blocking patent would live, so
+          <strong>Patent coverage was incomplete &mdash; absence of a blocker is not a clear result.</strong>
+          Not every patent that could block this venture was searched and reviewed, so
           &ldquo;no blockers found&rdquo; here does <em>not</em> mean the venture is free to operate.
           Treat the score below as a ceiling, not a finding, and commission a proper FTO search before relying on it.
           ${recall.explanation ? `<div class="section-confidence-warning-detail">${this.escape(recall.explanation)}</div>` : ''}
+          ${genusDropped > 0 ? `<div class="section-confidence-warning-detail"><strong>${genusDropped}</strong> broad patent${genusDropped === 1 ? ' was' : 's were'} identified as covering this technology category in general terms but ${genusDropped === 1 ? 'was' : 'were'} not claim-reviewed. Broad patents are the most likely to block a venture outright, so no conclusion was reached about the most dangerous candidates.</div>` : ''}
           ${(recall.legsWithErrors && recall.legsWithErrors.length) ? `<div class="section-confidence-warning-detail">Searches that failed to run (these areas were not searched at all): ${this.escape(recall.legsWithErrors.join(', '))}</div>` : ''}
         </div>
       </div>` : '';
@@ -2764,8 +2771,9 @@ class AssessmentView {
           <div class="evidence-section">
             <h4>Patent Search Coverage</h4>
             <ul class="compact-list freshness-list">
-              <li><strong>Search coverage confidence:</strong> ${this.escape(this.capitalize(recall.confidence))}</li>
+              <li><strong>Retrieval coverage confidence:</strong> ${this.escape(this.capitalize(recall.confidence))}</li>
               <li><strong>Unique third-party patents retrieved:</strong> ${this.escape(String(recall.uniquePoolSize || 0))}</li>
+              ${genusDropped > 0 ? `<li><strong>Broad patents identified but not claim-reviewed:</strong> ${this.escape(String(genusDropped))}</li>` : ''}
               ${(recall.legsWithErrors && recall.legsWithErrors.length) ? `<li><strong>Searches that failed to run:</strong> ${this.escape(recall.legsWithErrors.join(', '))}</li>` : ''}
               <li><strong>Absence of a blocker is meaningful:</strong> ${recall.absenceIsInformative ? 'Yes' : 'No &mdash; coverage was too thin to draw that conclusion'}</li>
             </ul>
