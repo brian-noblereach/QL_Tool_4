@@ -217,6 +217,9 @@ const FundingAPI = {
       dateApprox: deal.deal_date_approx || deal.deal_date || '',
       stage: deal.stage || deal.series || 'Undisclosed',
       amount: deal.amount || deal.funding_amount || 'undisclosed',
+      // v04.7: numeric raw-USD amount. Null for undisclosed deals and absent on
+      // pre-v04.7 attachments -- the view falls back to parsing `amount` prose.
+      amountUsd: typeof deal.amount_usd === 'number' ? deal.amount_usd : null,
       investors: deal.investors || '',
       relevance: deal.sector_relevance || 'broad',
       isVentureOwn: !!deal.is_venture_own,

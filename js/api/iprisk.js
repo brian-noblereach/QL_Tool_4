@@ -222,6 +222,28 @@ const IPRiskAPI = {
     if (typeof fresh.claims_staleness_flag !== 'boolean') fresh.claims_staleness_flag = false;
     if (typeof fresh.staleness_explanation !== 'string') fresh.staleness_explanation = '';
 
+    // v04.8: retrieval recall -- whether the patent search covered enough ground
+    // for the ABSENCE of a blocker to mean anything.
+    //
+    // Legacy default is deliberately SILENT, not 'unknown'. Pre-v04.8 attachments
+    // have no such field, and defaulting them to 'unknown' would fire a caveat
+    // banner on every previously-analyzed venture. The render condition keys on
+    // recall_caveat_flag, which stays false here -- same approach as
+    // status_staleness_flag above. (Inside the flow itself the default runs the
+    // other way: a missing signal there means 'unknown', never 'high'.)
+    if (!report.retrieval_recall_assessment || typeof report.retrieval_recall_assessment !== 'object') {
+      report.retrieval_recall_assessment = {};
+    }
+    const recall = report.retrieval_recall_assessment;
+    if (typeof recall.recall_confidence !== 'string') recall.recall_confidence = '';
+    if (typeof recall.recall_caveat_flag !== 'boolean') recall.recall_caveat_flag = false;
+    if (typeof recall.recall_explanation !== 'string') recall.recall_explanation = '';
+    if (typeof recall.searched_but_not_found_is_informative !== 'boolean') {
+      recall.searched_but_not_found_is_informative = true;
+    }
+    if (typeof recall.unique_pool_size !== 'number') recall.unique_pool_size = 0;
+    if (!Array.isArray(recall.legs_with_errors)) recall.legs_with_errors = [];
+
     // Top relevant patents
     if (!Array.isArray(report.top_relevant_patents)) report.top_relevant_patents = [];
 
@@ -327,6 +349,7 @@ const IPRiskAPI = {
     const claimScope = report.claim_scope_assessment || {};
     const blockingMetrics = report.blocking_metrics || {};
     const freshness = report.patent_data_freshness || {};
+    const recall = report.retrieval_recall_assessment || {};
 
     return {
       score,
@@ -391,6 +414,16 @@ const IPRiskAPI = {
         statusStalenessFlag: !!freshness.status_staleness_flag,
         claimsStalenessFlag: !!freshness.claims_staleness_flag,
         stalenessExplanation: freshness.staleness_explanation || ''
+      },
+      // v04.8: search-coverage signal. caveatFlag is the single render gate --
+      // it is false for legacy attachments, so nothing renders for them.
+      retrievalRecall: {
+        confidence: recall.recall_confidence || '',
+        caveatFlag: !!recall.recall_caveat_flag,
+        explanation: recall.recall_explanation || '',
+        absenceIsInformative: recall.searched_but_not_found_is_informative !== false,
+        uniquePoolSize: recall.unique_pool_size ?? 0,
+        legsWithErrors: Array.isArray(recall.legs_with_errors) ? recall.legs_with_errors : []
       },
       analysisGeneratedAt: report.analysis_generated_at || '',
 

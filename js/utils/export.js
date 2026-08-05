@@ -2182,6 +2182,27 @@ const ExportUtility = {
     doc.text('IP Landscape Analysis Details', 20, y);
     y += 12;
 
+    // v04.8: search-coverage caveat FIRST, before any finding. A PDF that shows
+    // a clean IP score while omitting this caveat is the false-negative artifact
+    // leaving the building -- and the PDF outlives the browser session where the
+    // on-screen banner lived.
+    const recall = formatted.retrievalRecall || {};
+    if (recall.caveatFlag) {
+      const parts = [
+        'WARNING - PATENT SEARCH COVERAGE WAS INCOMPLETE. This analysis could not search the '
+        + 'full space where a blocking patent would live, so an absence of identified blockers '
+        + 'below does NOT mean the venture is free to operate. Treat the IP score as a ceiling '
+        + 'rather than a finding, and commission a proper freedom-to-operate search before '
+        + 'relying on it.'
+      ];
+      if (recall.explanation) parts.push(recall.explanation);
+      if (recall.legsWithErrors && recall.legsWithErrors.length) {
+        parts.push('Searches that failed to run (these areas were not searched at all): '
+          + recall.legsWithErrors.join(', ') + '.');
+      }
+      renderParagraphSection('Search Coverage Caveat', parts.join(' '));
+    }
+
     renderParagraphSection(
       'Company IP Summary',
       formatted.companyIP?.summary || formatted.companyIP?.description || formatted.companyCurrentIP?.description

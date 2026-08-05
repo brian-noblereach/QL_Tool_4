@@ -930,17 +930,37 @@ class AssessmentView {
   }
 
   /**
-   * Format a deal amount from the v3 funding schema for display
+   * Format a VC deal amount for display.
+   * @param {string|number} amount - the flow's prose `amount` field ("$12.5M", "undisclosed")
+   * @param {number} [amountUsd] - the flow's numeric `amount_usd` field (raw dollars).
+   *   Preferred when present: no parsing, no ambiguity. `amount` is the fallback
+   *   for pre-v04.7 evidence attachments and the legacy venture-extraction tables.
    */
-  formatDealAmount(amount) {
-    if (!amount || amount === 'undisclosed' || amount === 'Undisclosed' || amount === 'Unknown') {
+  formatDealAmount(amount, amountUsd) {
+    if (typeof amountUsd === 'number' && Number.isFinite(amountUsd) && amountUsd > 0) {
+      return this.formatUsdCompact(amountUsd);
+    }
+    const raw = String(amount === null || amount === undefined ? '' : amount).trim();
+    if (!raw || this.isUndisclosedAmount(raw)) {
       return 'Undisclosed';
     }
-    const parsed = this.parseFundingAmount(amount);
-    if (parsed !== null) {
-      return this.formatCurrencyWithCommas(parsed, true);
+    const parsedUsd = this.parseFundingAmount(raw);
+    if (parsedUsd !== null && parsedUsd > 0) {
+      return this.formatUsdCompact(parsedUsd);
     }
-    return this.escape(String(amount));
+    if (parsedUsd !== null) {
+      return 'Undisclosed';
+    }
+    return this.escape(raw);
+  }
+
+  /**
+   * True when an amount string is a "no number available" placeholder
+   */
+  isUndisclosedAmount(value) {
+    const lower = String(value).trim().toLowerCase();
+    return lower === 'undisclosed' || lower === 'unknown' || lower === 'n/a'
+      || lower === 'na' || lower === 'none' || lower === '-';
   }
 
   /**
@@ -990,13 +1010,13 @@ class AssessmentView {
   }
 
   /**
-   * Format a grant funding_usd integer for display
+   * Format a grant funding_usd integer (RAW DOLLARS, per the Dimensions API) for display
    */
   formatGrantAmount(fundingUsd) {
     if (typeof fundingUsd !== 'number' || !Number.isFinite(fundingUsd) || fundingUsd <= 0) {
       return 'Undisclosed';
     }
-    return this.formatCurrencyWithCommas(fundingUsd, true);
+    return this.formatUsdCompact(fundingUsd);
   }
 
   displayFundingEvidence(data) {
@@ -1086,7 +1106,7 @@ class AssessmentView {
         <td><strong>${this.escape(d.company || '')}</strong></td>
         <td>${this.formatDate(d.dateApprox)}</td>
         <td>${this.escape(d.stage || 'N/A')}</td>
-        <td>${this.formatDealAmount(d.amount)}</td>
+        <td>${this.formatDealAmount(d.amount, d.amountUsd)}</td>
         <td>${this.renderRelevanceBadge(d.relevance)}</td>
         <td class="investors-cell">${this.escape(this.truncate(d.investors || '', 60))}</td>
       </tr>
@@ -2433,6 +2453,12 @@ class AssessmentView {
     const tierAActive = (bm.activeCoreBlockers != null) ? bm.activeCoreBlockers : tierA.length;
     const tierBWatch = (bm.pendingCoreWatch || 0) + (bm.adjacentActiveWatch || 0);
     const stalenessActive = freshness.statusStalenessFlag || freshness.claimsStalenessFlag;
+    // v04.8 search-coverage caveat. Deliberately NOT gated on hasClaimAware:
+    // "we may not have found everything" is orthogonal to "did we find anything
+    // claim-gradeable", and the worst case is a run with zero claim-gradeable
+    // findings -- exactly when hasClaimAware is false and the caveat matters most.
+    const recall = formatted.retrievalRecall || {};
+    const recallCaveat = !!recall.caveatFlag;
 
     // Renders one claim-grounded patent card (Tier A/B/C/D).
     const renderClaimPatent = (p) => `
@@ -2449,10 +2475,30 @@ class AssessmentView {
       </div>
     `;
 
+    // The search-coverage caveat and the generic low-confidence banner use the
+    // same amber treatment and say overlapping things, and low recall drives
+    // data_confidence to Low -- so rendering both stacks two warnings on one
+    // run. The recall caveat is strictly more specific and carries the richer
+    // explanation, so it takes precedence and suppresses the generic one.
+    const recallCaveatHTML = recallCaveat ? `
+      <div class="section-confidence-warning">
+        <span class="section-confidence-warning-icon">&#9888;</span>
+        <div>
+          <strong>Patent search coverage was incomplete &mdash; absence of a blocker is not a clear result.</strong>
+          This assessment could not search the full space where a blocking patent would live, so
+          &ldquo;no blockers found&rdquo; here does <em>not</em> mean the venture is free to operate.
+          Treat the score below as a ceiling, not a finding, and commission a proper FTO search before relying on it.
+          ${recall.explanation ? `<div class="section-confidence-warning-detail">${this.escape(recall.explanation)}</div>` : ''}
+          ${(recall.legsWithErrors && recall.legsWithErrors.length) ? `<div class="section-confidence-warning-detail">Searches that failed to run (these areas were not searched at all): ${this.escape(recall.legsWithErrors.join(', '))}</div>` : ''}
+        </div>
+      </div>` : '';
+
     // SUMMARY VIEW
     const summaryHTML = `
       <div class="evidence-content">
-        ${this.renderSectionConfidenceWarning(confidence, companyPatentsFound === 0 && totalRelevantPatents === 0, confidenceJustification)}
+        ${recallCaveat
+          ? recallCaveatHTML
+          : this.renderSectionConfidenceWarning(confidence, companyPatentsFound === 0 && totalRelevantPatents === 0, confidenceJustification)}
         <div class="metrics-row">
           <div class="metric-card">
             <span class="metric-label">Overall Risk</span>
@@ -2479,9 +2525,9 @@ class AssessmentView {
         ${hasClaimAware ? `
         <div class="evidence-section ip-claim-headline">
           <h4>Claim-Grounded Blocking</h4>
-          <div class="claim-blocking-banner ${tierAActive > 0 ? 'blocking-flag' : 'blocking-clear'}">
+          <div class="claim-blocking-banner ${recallCaveat ? '' : (tierAActive > 0 ? 'blocking-flag' : 'blocking-clear')}">
             <span class="claim-blocking-count">${tierAActive}</span>
-            <span class="claim-blocking-label">active core third-party blocker${tierAActive === 1 ? '' : 's'} (Tier A)</span>
+            <span class="claim-blocking-label">active core third-party blocker${tierAActive === 1 ? '' : 's'} (Tier A)${recallCaveat ? ' &mdash; incomplete search' : ''}</span>
           </div>
           <div class="claim-blocking-substats">
             <span>Tier-B watch items: <strong>${tierBWatch}</strong></span>
@@ -2489,6 +2535,7 @@ class AssessmentView {
             ${bm.claimsUnavailableHighRel > 0 ? `<span>High-relevance, claims unavailable: <strong>${bm.claimsUnavailableHighRel}</strong></span>` : ''}
           </div>
           ${claimScope.summary ? `<p class="claim-scope-summary">${this.escape(claimScope.summary)}</p>` : ''}
+          ${recallCaveat ? `<div class="staleness-warning">⚠ This count is <strong>not</strong> a clean-search result. Patent retrieval coverage was incomplete, so a count of ${tierAActive} means &ldquo;none found in what was searched&rdquo;, not &ldquo;none exists&rdquo;.</div>` : ''}
           ${stalenessActive ? `<div class="staleness-warning">⚠ ${this.escape(freshness.stalenessExplanation || 'Patent status / claims data may be stale; verify before relying on this assessment.')}</div>` : ''}
         </div>
         ` : ''}
@@ -2710,6 +2757,21 @@ class AssessmentView {
               ${freshness.claimsCheckedAt ? `<li><strong>Claims checked:</strong> ${this.escape(freshness.claimsCheckedAt)}</li>` : ''}
             </ul>
             ${stalenessActive ? `<div class="staleness-warning">⚠ ${this.escape(freshness.stalenessExplanation || 'Patent status / claims data may be stale.')}</div>` : `<p class="freshness-ok">Patent status and claims data are current as of the timestamps above.</p>`}
+          </div>
+        ` : ''}
+
+        ${recall.confidence ? `
+          <div class="evidence-section">
+            <h4>Patent Search Coverage</h4>
+            <ul class="compact-list freshness-list">
+              <li><strong>Search coverage confidence:</strong> ${this.escape(this.capitalize(recall.confidence))}</li>
+              <li><strong>Unique third-party patents retrieved:</strong> ${this.escape(String(recall.uniquePoolSize || 0))}</li>
+              ${(recall.legsWithErrors && recall.legsWithErrors.length) ? `<li><strong>Searches that failed to run:</strong> ${this.escape(recall.legsWithErrors.join(', '))}</li>` : ''}
+              <li><strong>Absence of a blocker is meaningful:</strong> ${recall.absenceIsInformative ? 'Yes' : 'No &mdash; coverage was too thin to draw that conclusion'}</li>
+            </ul>
+            ${recallCaveat
+              ? `<div class="staleness-warning">⚠ ${this.escape(recall.explanation || 'Patent retrieval coverage was incomplete; absence of a blocker is not evidence of freedom to operate.')}</div>`
+              : `<p class="freshness-ok">Retrieval covered the expected search space, so the blocking findings above reflect a reasonably complete search.</p>`}
           </div>
         ` : ''}
 
@@ -3549,90 +3611,80 @@ class AssessmentView {
     return '$' + num.toFixed(0);
   }
 
-  formatCurrencyWithCommas(valueInMillions, includeDecimals = true) {
-    if (!valueInMillions && valueInMillions !== 0) return '-';
-    const num = typeof valueInMillions === 'number' ? valueInMillions : parseFloat(valueInMillions);
-    if (isNaN(num)) return String(valueInMillions);
-    
-    // If it's less than 1 million dollars (value < 1 when expressed in millions)
-    // Display as actual dollar amount with commas
-    if (num < 1 && num > 0) {
-      const dollars = Math.round(num * 1000000);
-      return '$' + dollars.toLocaleString('en-US');
-    }
-    
-    // For values >= 1000 million (i.e., >= 1 billion)
-    if (num >= 1000) {
-      // Billions - remove trailing .0 if whole number
-      const billionValue = num / 1000;
-      if (billionValue % 1 === 0) {
-        return '$' + billionValue.toFixed(0) + 'B';
+  /**
+   * Format a RAW-USD number as a compact currency string.
+   *
+   * Input is always raw dollars -- 1200000 -> "$1.2M", 274800 -> "$274.8K".
+   * Trailing ".0" is dropped so whole values read "$850M", not "$850.0M".
+   *
+   * NOTE: every currency helper in this file takes raw dollars. There is
+   * deliberately no "value in millions" formatter -- a previous one caused
+   * grant amounts to render 1000x high with a "B" suffix ($1.2M -> "$1200B")
+   * because callers passed raw USD into it. Keep one convention.
+   */
+  formatUsdCompact(usd) {
+    const num = typeof usd === 'number' ? usd : parseFloat(usd);
+    if (!Number.isFinite(num)) return '-';
+    if (num === 0) return '$0';
+
+    const sign = num < 0 ? '-' : '';
+    const abs = Math.abs(num);
+    const units = [[1e12, 'T'], [1e9, 'B'], [1e6, 'M'], [1e3, 'K']];
+
+    for (const [divisor, suffix] of units) {
+      if (abs >= divisor) {
+        const scaled = abs / divisor;
+        const text = scaled % 1 === 0 ? scaled.toFixed(0) : scaled.toFixed(1);
+        return `${sign}$${text.replace(/\.0$/, '')}${suffix}`;
       }
-      return '$' + billionValue.toFixed(1) + 'B';
-    } else if (num >= 1) {
-      // Millions - remove trailing .0 if whole number
-      if (num % 1 === 0) {
-        return '$' + num.toFixed(0) + 'M';
-      }
-      const formatted = includeDecimals ? num.toFixed(1) : num.toFixed(0);
-      return '$' + formatted + 'M';
-    } else if (num === 0) {
-      return '$0';
     }
-    
-    // Fallback for any edge cases
-    return '$' + num.toFixed(1) + 'M';
+    return `${sign}$${abs.toFixed(0)}`;
   }
 
   /**
-   * Parse a funding amount from various formats and return value in millions
-   * Handles: numbers (assumed millions), strings like "$10M", "10 million", "1.5B", "$1,500,000"
+   * Parse a funding amount out of prose and return the value in RAW USD.
+   *
+   * Handles "$10M", "10 million", "1.5B", "$1,500,000", "$500K", "275000",
+   * and bare numbers (treated as raw dollars -- every numeric amount source in
+   * this codebase is raw USD: Dimensions `funding_usd`, the flow's `amount_usd`,
+   * company.js `amount_usd` / `award_amount_usd`).
+   *
+   * The unit suffix must be ATTACHED to the number ("12.5M", "1.2 billion").
+   * A letter elsewhere in the string is not a unit, so "$8 Series B" parses as
+   * $8M rather than $8B.
+   *
    * @param {number|string} amount - The amount to parse
-   * @returns {number|null} - Amount in millions, or null if unparseable
+   * @returns {number|null} - Amount in raw USD, or null if no number is present
    */
   parseFundingAmount(amount) {
-    if (amount === null || amount === undefined || amount === '' || 
-        amount === 'undisclosed' || amount === 'Undisclosed' || amount === 'Unknown') {
-      return null;
-    }
-    
-    // If it's already a number, assume it's in millions (API convention)
+    if (amount === null || amount === undefined || amount === '') return null;
+
     if (typeof amount === 'number') {
-      return amount;
+      return Number.isFinite(amount) ? amount : null;
     }
-    
+
     const amountStr = String(amount).toLowerCase().trim();
-    
-    // Extract numeric value
-    const numMatch = amountStr.match(/[\d,.]+/);
-    if (!numMatch) return null;
-    
-    const num = parseFloat(numMatch[0].replace(/,/g, ''));
-    if (isNaN(num)) return null;
-    
-    // Determine the unit and convert to millions
-    if (amountStr.includes('billion') || amountStr.includes('bn') || 
-        (amountStr.includes('b') && !amountStr.includes('m'))) {
-      return num * 1000; // Convert billions to millions
-    } else if (amountStr.includes('million') || amountStr.includes('mn') || amountStr.includes('m')) {
-      return num; // Already in millions
-    } else if (amountStr.includes('thousand') || amountStr.includes('k')) {
-      return num / 1000; // Convert thousands to millions
-    } else if (num >= 1000000) {
-      // Large number without unit - assume raw dollars
-      return num / 1000000;
-    } else if (num >= 1000) {
-      // Could be thousands of dollars or raw millions - context dependent
-      // If it has $ sign and is over 1000, likely raw dollars in thousands format
-      if (amountStr.includes('$')) {
-        return num / 1000000; // Treat as raw dollars
-      }
-      // Otherwise assume it's already in millions (API data)
-      return num;
-    } else {
-      // Small number - assume already in millions
-      return num;
-    }
+    if (this.isUndisclosedAmount(amountStr)) return null;
+
+    // First number, plus a unit suffix immediately following it. Longest
+    // alternatives first so "billion" wins over "bn" over "b".
+    const match = amountStr.match(
+      /([\d][\d,.]*)\s*(billion|bn|b|million|mn|m|thousand|k)?(?![a-z])/
+    );
+    if (!match) return null;
+
+    const num = parseFloat(match[1].replace(/,/g, ''));
+    if (!Number.isFinite(num)) return null;
+
+    const unit = match[2] || '';
+    if (unit === 'billion' || unit === 'bn' || unit === 'b') return num * 1e9;
+    if (unit === 'million' || unit === 'mn' || unit === 'm') return num * 1e6;
+    if (unit === 'thousand' || unit === 'k') return num * 1e3;
+
+    // No unit. >= 1000 is raw dollars ("$1,500,000", "275000"). Below 1000 is
+    // the VC-prose shorthand for millions ("raised 12" == $12M); nobody reports
+    // a three-figure venture round.
+    return num >= 1000 ? num : num * 1e6;
   }
 
   formatIntensity(value) {

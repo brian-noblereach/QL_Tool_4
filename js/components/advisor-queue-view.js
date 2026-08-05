@@ -572,6 +572,9 @@ const AdvisorQueueView = {
       document.getElementById('advisor-queue-view')?.classList.add('v04-hidden');
       const av = document.getElementById('results-section');
       if (av) { av.classList.remove('v04-hidden'); av.classList.remove('hidden'); }
+      // This path reveals results-section itself rather than going through
+      // AssessmentLoader, so it needs its own scroll reset.
+      try { window.AssessmentLoader?.scrollToAssessmentTop?.(); } catch (e) { Debug.warn('[v04] scrollToAssessmentTop failed:', e); }
       enable('solutionvalue');
       try { view?.loadSolutionValueEvidence?.(); } catch (e) { Debug.warn('[v04] loadSolutionValueEvidence failed:', e); }
     });

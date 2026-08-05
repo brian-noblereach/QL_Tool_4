@@ -18,6 +18,26 @@
 
 window.AssessmentLoader = {
   /**
+   * Land at the top of the assessment after switching into it.
+   *
+   * The queue the user just clicked from is usually scrolled well down the page,
+   * and hiding it does not move the viewport — so without this the assessment
+   * opens mid-page. Scrolls now and again on the next frame, so the reset
+   * survives the layout settling as the (much taller) assessment renders below.
+   *
+   * Called from loadEvidenceIntoView and from the live-run `overviewReady`
+   * handler in advisor-queue-view, which reveals results-section on its own.
+   */
+  scrollToAssessmentTop() {
+    const toTop = () => {
+      try { window.scrollTo({ top: 0, left: 0, behavior: 'auto' }); }
+      catch (e) { window.scrollTo(0, 0); } // older browsers: no options object
+    };
+    toTop();
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(toTop);
+  },
+
+  /**
    * @param {Object} assessment  the evidence JSON ({ company, team, funding, ... })
    * @param {Object} row         the queue row (VentureName, Institution, ...)
    */
@@ -45,6 +65,8 @@ window.AssessmentLoader = {
     // (Each caller hides its own source pane before calling this.)
     const av = document.getElementById('results-section');
     if (av) { av.classList.remove('v04-hidden'); av.classList.remove('hidden'); }
+
+    this.scrollToAssessmentTop();
 
     // Reset everything from the previously-opened venture so nothing bleeds through.
     const smReset = window.app?.stateManager;
