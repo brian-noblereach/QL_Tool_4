@@ -79,6 +79,11 @@ class AssessmentView {
    * Must be called when starting a new analysis or clicking "New Assessment."
    */
   reset() {
+    // v04.9: cleared here and set true only by AssessmentLoader, which runs
+    // exclusively for finished queue rows. Live runs leave it false so
+    // still-running phases keep reporting as pending.
+    this.evidenceIsFinal = false;
+
     const dimensions = ['team', 'funding', 'competitive', 'market', 'iprisk', 'solutionvalue'];
 
     dimensions.forEach(dim => {
@@ -1040,6 +1045,11 @@ class AssessmentView {
     const primarySector = formatted.primarySector || '';
     const broaderSector = formatted.broaderSector || '';
 
+    // v04.9 grant-retrieval coverage caveat. Absent on pre-v04.9 attachments
+    // (funding.js defaults it silent), so legacy ventures show no banner.
+    const grantRecall = formatted.grantRecall || {};
+    const recallCaveat = !!grantRecall.caveatFlag;
+
     // WSA + band + modifiers (folded inline into rationale, not a separate card)
     const wsa = formatted.weightedSectorActivity || 0;
     const wsaRounded = Number.isFinite(wsa) ? Math.round(wsa * 10) / 10 : 0;
@@ -1137,9 +1147,53 @@ class AssessmentView {
     // SUMMARY VIEW - three channels + venture-own panel
     const fundingThin = activityLevel === 'none_found'
       || (sectorVcDeals.length === 0 && sectorGrants.length === 0 && pipelineOpportunities.length === 0);
+
+    // The recall caveat and the generic thin-evidence banner use the same amber
+    // treatment and low recall almost always also trips `fundingThin`, so
+    // rendering both stacks two warnings that say overlapping things. The
+    // recall caveat is strictly more specific -- it explains WHY the evidence
+    // is thin and whether that thinness is trustworthy -- so it takes
+    // precedence and suppresses the generic one. Same precedence rule as the
+    // IP tab's v04.8 caveat.
+    //
+    // Note the direction of the risk here is the OPPOSITE of the IP tab's. On
+    // IP, incomplete retrieval makes a *reassuring* result untrustworthy. On
+    // funding, incomplete retrieval makes a *damning* result untrustworthy: a
+    // low score reads as "this sector has no money in it", and that is exactly
+    // what a failed grant query also looks like.
+    // Two independent triggers, and they need different headlines. "We could not
+    // search the sector" and "we searched but one slice was never covered" lead
+    // an advisor to different actions, and the second fires at `medium`
+    // confidence where the grant table is populated -- calling that "no usable
+    // coverage" in front of 10 real grants would read as a bug.
+    const unsurveyed = grantRecall.preciseLegsWithoutResults || [];
+    const legLabel = { application: 'application / indication', mechanism: 'mechanism / material' };
+    const unsurveyedText = unsurveyed.map(l => legLabel[l] || l).join(' and ');
+    const recallCaveatHTML = recallCaveat ? `
+      <div class="section-confidence-warning">
+        <span class="section-confidence-warning-icon">&#9888;</span>
+        <div>
+          ${grantRecall.unreachable
+            ? `<strong>Grant search coverage was incomplete &mdash; a low score here is not a verified finding.</strong>
+               The sector-specific grant searches did not return usable coverage, so an absence of
+               grant activity below means &ldquo;none found in what was searched&rdquo;, not
+               &ldquo;none exists&rdquo;. Treat the score as a floor, not a measurement.`
+            : `<strong>Part of the grant landscape was never searched &mdash; read the absences below with care.</strong>
+               The grants shown are real, but the ${this.escape(unsurveyedText || 'sector-specific')}
+               search returned nothing at all, so that slice of the sector was not surveyed.
+               Anything the report describes as absent in that area is unverified rather than ruled out.`}
+          ${grantRecall.reason ? `<div class="section-confidence-warning-detail">${this.escape(grantRecall.reason)}</div>` : ''}
+          ${grantRecall.anchorsMissing ? `<div class="section-confidence-warning-detail"><strong>Configuration issue:</strong> the search-term generator did not supply the sector term bands, so grant retrieval ran in a degraded fallback mode. This is a deployment problem, not a property of the venture.</div>` : ''}
+          ${Number.isFinite(grantRecall.preciseLegUsHits) ? `<div class="section-confidence-warning-detail">Sector-specific search legs returned <strong>${grantRecall.preciseLegUsHits}</strong> US grant${grantRecall.preciseLegUsHits === 1 ? '' : 's'}. Broad-industry results are shown for context only and are not evidence about this venture's sector.</div>` : ''}
+          ${grantRecall.floorApplied ? `<div class="section-confidence-warning-detail">The AI score was raised off the bottom of the scale because a verified absence of funding activity could not be established. Score it yourself from the evidence below.</div>` : ''}
+        </div>
+      </div>` : '';
+
     const summaryHTML = `
       <div class="evidence-content">
-        ${this.renderSectionConfidenceWarning('', fundingThin, dataGaps)}
+        ${recallCaveat
+          ? recallCaveatHTML
+          : this.renderSectionConfidenceWarning('', fundingThin, dataGaps)}
         ${primarySector ? `<p class="industry-context"><strong>Sector Assessed:</strong> ${this.escape(primarySector)}${broaderSector ? ` (${this.escape(broaderSector)})` : ''}</p>` : ''}
 
         <div class="metrics-row">
@@ -3388,7 +3442,16 @@ class AssessmentView {
       if (!market) pendingSources.push('Market');
       if (!competitive) pendingSources.push('Competitive');
       if (!literature) pendingSources.push('Scientific Evidence');
-      if (hasSynthesisSV === false && (this.data.synthesis === null || this.data.synthesis === undefined)) {
+      // v04.9: only call synthesis "awaiting" when it might still arrive. On a
+      // row the runner already marked Ready, a missing synthesis means the
+      // phase failed (e.g. an out-1 content-safety refusal) and will never
+      // arrive -- the v04.1 fallback layout below is the final state, so an
+      // "Awaiting" spinner just makes the advisor wait for nothing. The
+      // fallback is silent by design (CLAUDE.md: synthesis failures degrade
+      // gracefully) and there is nothing here for the advisor to act on.
+      if (hasSynthesisSV === false
+          && (this.data.synthesis === null || this.data.synthesis === undefined)
+          && !this.evidenceIsFinal) {
         pendingSources.push('Synthesis');
       }
 

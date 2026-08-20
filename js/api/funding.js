@@ -166,6 +166,23 @@ const FundingAPI = {
       analysis.venture_own_funding_context = '';
     }
 
+    // Grant-retrieval recall guards (v04.9). Legacy attachments predate the
+    // guards entirely, so the default must be SILENT, not `unknown` -- an
+    // `unknown` default would raise the caveat banner on every pre-v04.9
+    // venture. Same reasoning as iprisk.js's retrieval_recall_assessment
+    // default: absent guards mean "this run was never instrumented", not
+    // "this run was thin".
+    if (!analysis.grant_recall || typeof analysis.grant_recall !== 'object') {
+      analysis.grant_recall = {};
+    }
+    const gr = analysis.grant_recall;
+    if (typeof gr.grant_recall_confidence !== 'string') gr.grant_recall_confidence = '';
+    if (typeof gr.recall_confidence_reason !== 'string') gr.recall_confidence_reason = '';
+    if (typeof gr.precise_leg_us_hits !== 'number') gr.precise_leg_us_hits = null;
+    if (typeof gr.anchors_missing !== 'boolean') gr.anchors_missing = false;
+    if (!Array.isArray(gr.precise_legs_without_results)) gr.precise_legs_without_results = [];
+    if (typeof gr.recall_caveat_flag !== 'boolean') gr.recall_caveat_flag = false;
+
     // Misc analysis fields
     if (typeof analysis.tools_executed_all_sources !== 'boolean') {
       analysis.tools_executed_all_sources = !!analysis.tools_executed;
@@ -203,6 +220,108 @@ const FundingAPI = {
       }));
     }
     if (!Array.isArray(assessment.human_review_flags)) assessment.human_review_flags = [];
+  },
+
+  /**
+   * The eight Weighted Sector Activity weights from the v02 rubric
+   * (Prompts and Schemas/Sector Funding/sector_funding_flow_v02.md, Node 7
+   * "SCORING WEIGHTS"). Broad-relevance records are context only and carry no
+   * weight; pipeline opportunities are a band modifier, not a WSA term.
+   *
+   * Keep these in sync with the spec. They are the rubric -- changing a value
+   * here silently re-bases every score the tool displays.
+   */
+  WSA_WEIGHTS: {
+    vc_deal_count_core: 1.0,
+    vc_deal_count_adjacent: 0.5,
+    translational_grant_count_core: 1.0,
+    translational_grant_count_adjacent: 0.5,
+    applied_grant_count_core: 0.7,
+    applied_grant_count_adjacent: 0.35,
+    basic_grant_count_core: 0.2,
+    basic_grant_count_adjacent: 0.1,
+  },
+
+  /**
+   * Shape the grant-retrieval recall guards for the view.
+   *
+   * `caveatFlag` is DERIVED here from the underlying facts rather than trusted
+   * from the Grader/Output-Agent boolean, because that boolean has already been
+   * wrong once in the direction that matters: a run reported
+   * grant_recall_confidence "medium" with the mechanism leg empty and
+   * recall_caveat_flag false, which silently suppressed the advisor banner. The
+   * two triggers are independent -- retrieval that could not reach the sector
+   * (low/unknown/anchors_missing), and retrieval that reached it but left a
+   * named slice unsurveyed (precise_legs_without_results). Deriving means a
+   * stale or mis-set upstream flag cannot hide either one.
+   *
+   * Legacy attachments carry no guards at all, so every input is falsy/empty
+   * and the flag stays false -- pre-v04.9 ventures show no banner.
+   */
+  shapeGrantRecall(grantRecall, assessment) {
+    const gr = grantRecall || {};
+    const impact = (assessment || {}).grant_recall_impact || {};
+    const confidence = gr.grant_recall_confidence || '';
+    const legs = Array.isArray(gr.precise_legs_without_results)
+      ? gr.precise_legs_without_results.filter(Boolean)
+      : [];
+    const coverageGap = legs.length > 0;
+    const unreachable = confidence === 'low' || confidence === 'unknown' || !!gr.anchors_missing;
+    return {
+      confidence,
+      reason: gr.recall_confidence_reason || '',
+      preciseLegUsHits: gr.precise_leg_us_hits,
+      anchorsMissing: !!gr.anchors_missing,
+      preciseLegsWithoutResults: legs,
+      // Which trigger fired -- the banner copy differs, because "we could not
+      // search" and "we searched but skipped a slice" are different warnings.
+      unreachable,
+      coverageGap,
+      caveatFlag: unreachable || coverageGap || !!gr.recall_caveat_flag,
+      floorApplied: !!impact.recall_floor_applied,
+      impactExplanation: impact.impact_explanation || '',
+    };
+  },
+
+  /**
+   * Compute WSA deterministically from summary_statistics.
+   *
+   * Falls back to the Grader's reported number only when summary_statistics
+   * carries none of the eight count fields -- i.e. a v01-era attachment that
+   * predates the counts entirely. Returning 0 in that case would blank out the
+   * WSA on old ventures, which is worse than showing the model's figure.
+   */
+  computeWsa(summaryStatistics, assessment) {
+    const s = summaryStatistics || {};
+    const keys = Object.keys(this.WSA_WEIGHTS);
+    const present = keys.some(k => Number.isFinite(Number(s[k])));
+    if (!present) {
+      const reported = Number((assessment || {}).weighted_sector_activity);
+      return Number.isFinite(reported) ? reported : 0;
+    }
+    let total = 0;
+    keys.forEach(k => {
+      const n = Number(s[k]);
+      if (Number.isFinite(n) && n > 0) total += n * this.WSA_WEIGHTS[k];
+    });
+    // Round to one decimal -- the rubric bands are coarse and the raw sum
+    // produces float artifacts (6.6499999999999995).
+    return Math.round(total * 10) / 10;
+  },
+
+  /**
+   * Diagnostic: how far the Grader's reported WSA drifted from the computed
+   * one. Returns null when there is nothing to compare or the gap is trivial.
+   */
+  wsaMismatch(summaryStatistics, assessment) {
+    const s = summaryStatistics || {};
+    const keys = Object.keys(this.WSA_WEIGHTS);
+    if (!keys.some(k => Number.isFinite(Number(s[k])))) return null;
+    const reported = Number((assessment || {}).weighted_sector_activity);
+    if (!Number.isFinite(reported)) return null;
+    const computed = this.computeWsa(summaryStatistics, assessment);
+    const delta = Math.round((reported - computed) * 10) / 10;
+    return Math.abs(delta) < 0.15 ? null : { computed, reported, delta };
   },
 
   /**
@@ -268,7 +387,19 @@ const FundingAPI = {
       score: assessment.score,
       rubricLevel: assessment.rubric_level || '',
       dataReliability: assessment.data_reliability || 'unverified',
-      weightedSectorActivity: assessment.weighted_sector_activity || 0,
+      // v04.9.1: WSA is COMPUTED here, not read from the Grader. It is a pure
+      // function of summary_statistics and the eight fixed rubric weights, and
+      // the Grader has twice emitted a number that contradicts its own
+      // `wsa_arithmetic` prose (26.8 vs 19.8, which crossed a band edge and
+      // inflated a score by a full point; then 8.2 vs 6.65). A prompt
+      // instruction telling it to stay consistent did not hold. This does not
+      // change the rubric -- the weights and bands are exactly as specified in
+      // sector_funding_flow_v02.md; it just stops asking a language model to do
+      // arithmetic. `weightedSectorActivityReported` and `wsaMismatch` are kept
+      // for diagnostics.
+      weightedSectorActivity: this.computeWsa(analysis.summary_statistics, assessment),
+      weightedSectorActivityReported: assessment.weighted_sector_activity || 0,
+      wsaMismatch: this.wsaMismatch(analysis.summary_statistics, assessment),
       wsaArithmetic: assessment.wsa_arithmetic || '',
       bandAssignment: assessment.band_assignment || '',
       modifiersApplied: assessment.modifiers_applied || [],
@@ -305,6 +436,12 @@ const FundingAPI = {
 
       // Summary statistics (passed through verbatim for the detailed-view table)
       summaryStatistics: analysis.summary_statistics || {},
+
+      // Grant-retrieval recall guards (v04.9). `caveatFlag` drives the amber
+      // banner on the Funding tab; `floorApplied` comes off the Grader and
+      // tells the advisor the score was raised off 1-2 because a verified
+      // absence could not be established.
+      grantRecall: this.shapeGrantRecall(analysis.grant_recall, assessment),
 
       dataGaps: analysis.data_gaps || '',
 

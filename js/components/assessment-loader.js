@@ -170,6 +170,12 @@ window.AssessmentLoader = {
       console.warn('[v04] no company in assessment');
     }
 
+    // v04.9: this function only ever renders a FINISHED queue row's attachment,
+    // so whatever is absent from `a` is absent for good. Setting this after the
+    // reset() above (which clears it) stops the Solution Value tab showing an
+    // "Awaiting: Synthesis analysis" spinner for a synthesis phase that failed.
+    view.evidenceIsFinal = true;
+
     const team        = shape('team',        window.TeamAPI,        a.team);
     const funding     = shape('funding',     window.FundingAPI,     a.funding);
     const competitive = shape('competitive', window.CompetitiveAPI, a.competitive);
