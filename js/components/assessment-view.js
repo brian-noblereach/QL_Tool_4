@@ -1060,9 +1060,31 @@ class AssessmentView {
     // Three funding channels (sector-only; venture-own is partitioned separately)
     const sectorVcDeals = formatted.sectorVcDeals || [];
     const ventureOwnVcDeals = formatted.ventureOwnVcDeals || [];
-    const sectorGrants = formatted.sectorGrants || [];
+    // v04.9.3: order grant + pipeline tables by sector relevance.
+    //
+    // The Summary tables render `.slice(0, 5)` of these arrays, so array order
+    // decides what an advisor sees first. The runner delivers grants in search-
+    // leg order (precise legs first), which was meant to keep sector-specific
+    // records from being crowded out -- but "came from a precise leg" is only a
+    // proxy for relevance, and it broke when one search term was a patient
+    // population rather than a technology. The result: five feeding-therapy and
+    // nutrition studies at the top of the Federal Grants table while the actual
+    // closure-device grants sat behind "+5 more in detailed view".
+    //
+    // Sorting on the relevance tag the Reranker already assigns is a direct
+    // measure instead of a proxy. Stable within each tier, so leg order still
+    // breaks ties.
+    const RELEVANCE_RANK = { core: 0, adjacent: 1, broad: 2 };
+    const byRelevance = (rows) => (rows || []).slice().sort((a, b) => {
+      const ra = RELEVANCE_RANK[(a.relevance || '').toLowerCase()];
+      const rb = RELEVANCE_RANK[(b.relevance || '').toLowerCase()];
+      // Unknown/absent tags sort last rather than jumping to the front.
+      return (ra === undefined ? 3 : ra) - (rb === undefined ? 3 : rb);
+    });
+
+    const sectorGrants = byRelevance(formatted.sectorGrants);
     const ventureOwnGrants = formatted.ventureOwnGrants || [];
-    const pipelineOpportunities = formatted.pipelineOpportunities || [];
+    const pipelineOpportunities = byRelevance(formatted.pipelineOpportunities);
     const ventureOwnFundingContext = formatted.ventureOwnFundingContext || '';
 
     const humanReviewFlags = formatted.humanReviewFlags || [];
@@ -1166,9 +1188,39 @@ class AssessmentView {
     // an advisor to different actions, and the second fires at `medium`
     // confidence where the grant table is populated -- calling that "no usable
     // coverage" in front of 10 real grants would read as a bug.
-    const unsurveyed = grantRecall.preciseLegsWithoutResults || [];
-    const legLabel = { application: 'application / indication', mechanism: 'mechanism / material' };
+    const unsurveyed = grantRecall.coverageGapLegs || [];
+    const legLabel = { application: 'sector-specific (application)', mechanism: 'mechanism / material' };
     const unsurveyedText = unsurveyed.map(l => legLabel[l] || l).join(' and ');
+
+    // v04.9.4: report the APPLICATION-leg count, which is what measures sector
+    // coverage. The old line printed `precise_leg_us_hits` (application +
+    // mechanism), so a run with 0 application hits and 36 mechanism hits showed
+    // "sector-specific search legs returned 36 US grants" directly underneath
+    // "only 0 came from the application leg". Pre-v04.9.4 attachments have no
+    // application count, so they get the combined figure clearly labelled as
+    // combined rather than a number implying sector coverage it doesn't measure.
+    const appHits = grantRecall.applicationLegUsHits;
+    const allHits = grantRecall.preciseLegUsHits;
+    const countsLine = Number.isFinite(appHits)
+      ? `<div class="section-confidence-warning-detail">Sector-specific (application) search legs returned <strong>${appHits}</strong> US grant${appHits === 1 ? '' : 's'}${Number.isFinite(allHits) && allHits !== appHits ? ` &mdash; the other ${allHits - appHits} came from material-literature searches, which track the underlying material rather than this venture's sector` : ''}.</div>`
+      : (Number.isFinite(allHits)
+        ? `<div class="section-confidence-warning-detail">Across the sector and material search legs combined, <strong>${allHits}</strong> US grant${allHits === 1 ? '' : 's'} matched. This run predates the separate sector-only count, so see the reason above for how coverage was judged.</div>`
+        : '');
+
+    // Design fix (v04.9.4): the guard measures *retrieval coverage*, which is not
+    // the same as *evidence found* -- the Reranker can tag a grant core/adjacent
+    // even when it arrived via a broader leg. A run was showing "that slice of the
+    // sector was not surveyed" while its own rationale cited a core NSF SBIR
+    // award. Rather than suppress the caveat (the coverage gap is real and the
+    // advisor should know), acknowledge the evidence that does exist so the banner
+    // stops contradicting the table beneath it.
+    const onSectorGrants = sectorGrants.filter(g => {
+      const r = (g.relevance || '').toLowerCase();
+      return r === 'core' || r === 'adjacent';
+    }).length;
+    const onSectorLine = onSectorGrants > 0
+      ? `<div class="section-confidence-warning-detail"><strong>${onSectorGrants}</strong> grant${onSectorGrants === 1 ? '' : 's'} below ${onSectorGrants === 1 ? 'was' : 'were'} still assessed as core or adjacent to this venture and ${onSectorGrants === 1 ? 'is' : 'are'} real evidence &mdash; they were just found by broader searches rather than by the sector-specific one. Treat them as a floor on sector activity, not a complete picture.</div>`
+      : '';
     const recallCaveatHTML = recallCaveat ? `
       <div class="section-confidence-warning">
         <span class="section-confidence-warning-icon">&#9888;</span>
@@ -1184,7 +1236,8 @@ class AssessmentView {
                Anything the report describes as absent in that area is unverified rather than ruled out.`}
           ${grantRecall.reason ? `<div class="section-confidence-warning-detail">${this.escape(grantRecall.reason)}</div>` : ''}
           ${grantRecall.anchorsMissing ? `<div class="section-confidence-warning-detail"><strong>Configuration issue:</strong> the search-term generator did not supply the sector term bands, so grant retrieval ran in a degraded fallback mode. This is a deployment problem, not a property of the venture.</div>` : ''}
-          ${Number.isFinite(grantRecall.preciseLegUsHits) ? `<div class="section-confidence-warning-detail">Sector-specific search legs returned <strong>${grantRecall.preciseLegUsHits}</strong> US grant${grantRecall.preciseLegUsHits === 1 ? '' : 's'}. Broad-industry results are shown for context only and are not evidence about this venture's sector.</div>` : ''}
+          ${countsLine}
+          ${onSectorLine}
           ${grantRecall.floorApplied ? `<div class="section-confidence-warning-detail">The AI score was raised off the bottom of the scale because a verified absence of funding activity could not be established. Score it yourself from the evidence below.</div>` : ''}
         </div>
       </div>` : '';
@@ -3471,14 +3524,32 @@ class AssessmentView {
         ? `<div class="evidence-content aggregated-evidence">${pendingNotice}${items.join('')}</div>`
         : `<div class="evidence-content aggregated-evidence">${pendingNotice}<p class="sv-tab-empty"><em>No content for this view. Try the other tabs above.</em></p></div>`;
 
-      // When synthesis is absent the Summary tab needs *something* useful, so
-      // surface a short orientation card pointing the advisor at the Detailed
-      // tab (which has all the v04.1 layout content).
+      // When synthesis is absent the Summary tab needs *something* useful.
+      //
+      // v04.9.3: it used to get the chips row plus a bare "the evidence is on
+      // the Detailed tab" pointer, which reads as a broken tab -- and synthesis
+      // has now failed three consecutive runs on one venture (out-1 content
+      // refusal), so this is not a rare path. The synthesis lead narrative is
+      // the only thing missing; the underlying company-extracted problem,
+      // severity, and value-proposition text is all present, just bucketed into
+      // Detailed. Surface it here instead of pointing at it.
       const summaryItems = summarySections.slice();
       if (!hasSynthesisSV && summaryItems.length <= 1 && detailedSections.length > 0) {
+        const fallbackBits = [];
+        if (sv.problem_statement) {
+          fallbackBits.push(`<div class="evidence-item"><strong>Problem:</strong> ${escape(sv.problem_statement)}</div>`);
+        }
+        if (sv.problem_severity_justification) {
+          fallbackBits.push(`<div class="evidence-item"><strong>Severity${sv.problem_severity ? ` (${escape(capitalize(sv.problem_severity))})` : ''}:</strong> ${escape(sv.problem_severity_justification)}</div>`);
+        }
+        if (sv.value_proposition) {
+          fallbackBits.push(`<div class="evidence-item"><strong>Value proposition:</strong> ${escape(sv.value_proposition)}</div>`);
+        }
+        const limitationsCount = (sv.status_quo_limitations || []).length;
         summaryItems.push(`
           <div class="evidence-subsection sv-summary-pointer">
-            <p>Full source-extracted evidence is on the <strong>Detailed</strong> tab. Sources / cross-references on the <strong>Sources</strong> tab.</p>
+            ${fallbackBits.join('')}
+            <p class="evidence-source-tag">Source-extracted summary. The cross-source synthesis narrative is unavailable for this venture, so this is the venture's own framing rather than a reconciled view.${limitationsCount > 0 ? ` ${limitationsCount} status-quo limitation${limitationsCount === 1 ? '' : 's'}, quantified benefits, and stakeholder detail are on the <strong>Detailed</strong> tab.` : ` Full evidence is on the <strong>Detailed</strong> tab.`} Sources / cross-references on the <strong>Sources</strong> tab.</p>
           </div>
         `);
       }

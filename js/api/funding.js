@@ -179,8 +179,21 @@ const FundingAPI = {
     if (typeof gr.grant_recall_confidence !== 'string') gr.grant_recall_confidence = '';
     if (typeof gr.recall_confidence_reason !== 'string') gr.recall_confidence_reason = '';
     if (typeof gr.precise_leg_us_hits !== 'number') gr.precise_leg_us_hits = null;
+    // v04.9.4: the application-leg count is what measures sector coverage.
+    // Absent on v04.9.0-.3 attachments -- leave null rather than falling back to
+    // precise_leg_us_hits, which also counts mechanism-leg hits and would
+    // overstate coverage in the exact banner meant to warn about thin coverage.
+    if (typeof gr.application_leg_us_hits !== 'number') gr.application_leg_us_hits = null;
     if (typeof gr.anchors_missing !== 'boolean') gr.anchors_missing = false;
-    if (!Array.isArray(gr.precise_legs_without_results)) gr.precise_legs_without_results = [];
+    // Derive from the v04.9.1/.2 field when absent, BEFORE defaulting to [] --
+    // defaulting first would make the field an array and shadow the fallback.
+    // 'mechanism' is filtered out because it was never a real coverage gap.
+    if (!Array.isArray(gr.coverage_gap_legs)) {
+      gr.coverage_gap_legs = Array.isArray(gr.precise_legs_without_results)
+        ? gr.precise_legs_without_results.filter(l => l && l !== 'mechanism')
+        : [];
+    }
+    if (typeof gr.mechanism_leg_empty !== 'boolean') gr.mechanism_leg_empty = false;
     if (typeof gr.recall_caveat_flag !== 'boolean') gr.recall_caveat_flag = false;
 
     // Misc analysis fields
@@ -262,17 +275,22 @@ const FundingAPI = {
     const gr = grantRecall || {};
     const impact = (assessment || {}).grant_recall_impact || {};
     const confidence = gr.grant_recall_confidence || '';
-    const legs = Array.isArray(gr.precise_legs_without_results)
-      ? gr.precise_legs_without_results.filter(Boolean)
-      : [];
+    // v04.9.3: `coverage_gap_legs` carries only the application leg. The older
+    // `precise_legs_without_results` also included the mechanism leg, which
+    // raised a caveat claiming a slice of the sector went unsurveyed on runs
+    // whose own grant table showed results from that material area. The legacy
+    // field is normalised into this one by ensureRequiredFields.
+    const legs = (Array.isArray(gr.coverage_gap_legs) ? gr.coverage_gap_legs : []).filter(Boolean);
     const coverageGap = legs.length > 0;
     const unreachable = confidence === 'low' || confidence === 'unknown' || !!gr.anchors_missing;
     return {
       confidence,
       reason: gr.recall_confidence_reason || '',
       preciseLegUsHits: gr.precise_leg_us_hits,
+      applicationLegUsHits: gr.application_leg_us_hits,
       anchorsMissing: !!gr.anchors_missing,
-      preciseLegsWithoutResults: legs,
+      coverageGapLegs: legs,
+      mechanismLegEmpty: !!gr.mechanism_leg_empty,
       // Which trigger fired -- the banner copy differs, because "we could not
       // search" and "we searched but skipped a slice" are different warnings.
       unreachable,
